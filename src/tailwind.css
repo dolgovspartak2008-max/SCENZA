@@ -1,0 +1,13 @@
+@layer theme, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+@source "./**/*.{ts,tsx}";
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: #f4f7fa;
+  --color-primary: var(--accent);
+  --color-primary-foreground: #03241f;
+  --color-border: var(--line);
+  --color-muted: var(--panel);
+  --color-muted-foreground: var(--muted);
+}

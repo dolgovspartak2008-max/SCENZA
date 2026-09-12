@@ -1,0 +1,79 @@
+.scenza-dialog.scenza-auth-dialog { width: min(560px, calc(100% - 24px)); padding: 38px 28px 24px; background: #061713; border: 1px solid #234b43; border-radius: 18px; }
+.scenza-auth-dialog .scenza-auth-tabs { margin-top: 8px; padding: 5px; border-radius: 17px; border-color: #245147; background: #051c17; }
+.scenza-auth-dialog .scenza-auth-tabs button { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 55px; border-radius: 12px; font-size: 1rem; font-weight: 650; color: #b2cec7; }
+.scenza-auth-dialog .scenza-auth-tabs button[aria-selected=true] { background: linear-gradient(100deg, #30d7d8, #63f6d3); color: #031a16; }
+.scenza-auth-dialog .scenza-auth-heading { padding-top: 22px; }
+.scenza-auth-dialog .scenza-auth-heading h2 { margin-top: 0; font-size: 1.85rem; }
+.scenza-auth-dialog .scenza-auth-heading p { color: #b0ccc4; font-size: .92rem; }
+.scenza-auth-dialog form { gap: 0; margin-top: 26px; }
+.scenza-auth-dialog form > label { margin-bottom: 9px; font-size: .88rem; }
+.scenza-auth-input { position: relative; display: flex; align-items: center; margin-bottom: 23px; }
+.scenza-auth-input > svg { position: absolute; left: 17px; color: #96b9ac; pointer-events: none; }
+.scenza-auth-dialog .scenza-auth-input input { width: 100%; min-width: 0; min-height: 58px; margin: 0; padding: 15px 49px; border: 1px solid #29584c; border-radius: 12px; background: #041c15; font-size: 1rem; color: #f0fff8; }
+.scenza-auth-input input::placeholder { color: #90ada5; opacity: 1; }
+.scenza-auth-input > button { position: absolute; right: 4px; display: grid; place-items: center; width: 44px; height: 44px; color: #a5c9bc; border-radius: 8px; }
+.scenza-auth-dialog .scenza-auth-submit { min-height: 56px; border-radius: 12px; font-size: 1rem; }
+.scenza-auth-dialog .scenza-auth-options { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; margin: -7px 0 18px; }
+.scenza-auth-options label, .scenza-auth-consents label { display: flex; align-items: flex-start; gap: 10px; margin: 0; line-height: 1.6; }
+.scenza-auth-dialog input[type=checkbox] { width: 20px; height: 20px; min-height: 20px; flex-shrink: 0; margin: 2px 0 0; padding: 0; accent-color: #4fe7cc; }
+.scenza-auth-options button, .scenza-auth-switch button, .scenza-auth-text-button { color: #70f4d4; font-weight: 650; font-size: .87rem; min-height: 36px; }
+.scenza-auth-options label { align-items: center; font-size: .88rem; }
+.scenza-auth-options label input { margin-top: 0; }
+.scenza-auth-consents { display: grid; gap: 14px; margin: 0 0 22px; }
+.scenza-auth-consents a, .scenza-auth-privacy a, .scenza-legal-page a { text-decoration: underline; text-underline-offset: 3px; color: #72e5cc; }
+.scenza-auth-switch { text-align: center; margin: 15px 0 0; color: #b2ccc3; font-size: .86rem; }
+.scenza-auth-divider { display: flex; align-items: center; gap: 15px; margin: 26px 0 22px; color: #a5c7bc; font-size: .85rem; }
+.scenza-auth-divider::before, .scenza-auth-divider::after { content: ''; height: 1px; flex: 1; background: #28463b; }
+.scenza-telegram-auth { text-align: center; }
+.scenza-telegram-auth h3 { font-size: 1.08rem; margin: 0 0 8px; }
+.scenza-telegram-auth p { color: #aecbbe; font-size: .88rem; margin-bottom: 20px; }
+.scenza-telegram-auth button { width: 100%; min-height: 58px; border-radius: 12px; border-color: #326e59; font-size: 1rem; }
+.scenza-telegram-auth button svg { color: #53bfff; }
+.scenza-telegram-auth small { display: block; margin-top: 10px; color: #aecbbe; }
+.scenza-auth-privacy { display: flex; gap: 12px; align-items: flex-start; margin-top: 28px; font-size: .8rem; line-height: 1.7; color: #aec7bd; }
+.scenza-auth-privacy svg { flex-shrink: 0; margin-top: 3px; color: #67edd0; }
+.scenza-auth-availability { padding: 12px 0 0; font-size: .8rem; line-height: 1.65; color: #c2d2c8; }
+.scenza-trial-note { padding: 14px 17px; margin-top: 22px; background: #0d2a20; border: 1px solid #285844; border-radius: 10px; }
+.scenza-trial-note strong { color: #84f5cd; font-size: .95rem; }
+.scenza-trial-note p { color: #c0dbce; margin: 5px 0 0; font-size: .82rem; line-height: 1.6; }
+.scenza-auth-error { margin-top: 18px; padding: 14px; background: #351c1c; border: 1px solid #915650; border-radius: 8px; color: #ffd5cd; line-height: 1.6; }
+.scenza-auth-plan-details { margin-top: 22px; font-size: .84rem; color: #c1d8cd; }
+.scenza-auth-plan-details summary { cursor: pointer; padding: 10px 0; }
+.scenza-auth-plan-details .scenza-auth-plans { margin-top: 7px; }
+.scenza-auth-plan-details p { margin-top: 12px; font-size: .76rem; }
+.scenza-account { padding-top: 12px; text-align: center; }
+.scenza-account > svg { margin-inline: auto; color: #76edc9; }
+.scenza-account .scenza-auth-submit { margin-top: 22px; }
+.scenza-account > p { overflow-wrap: anywhere; }
+.scenza-account > button { margin-top: 18px; }
+.scenza-auth-dialog :focus-visible, .scenza-legal-page :focus-visible { outline: 2px solid #7affd8; outline-offset: 4px; }
+.scenza-auth-dialog button:disabled { cursor: not-allowed; opacity: .55; }
+.scenza-footer .scenza-legal-footer { display: block; margin-top: 24px; border-top: 1px solid #28433b; padding-top: 22px; }
+.scenza-legal-footer nav { margin: 0; gap: 8px 22px; font-size: .76rem; }
+.scenza-legal-footer nav a { min-height: 34px; align-items: center; }
+.scenza-legal-footer p { text-align: left; width: auto; color: #afc4bd; line-height: 1.8; margin-top: 12px; font-size: .74rem; }
+.scenza-legal-page { min-height: 100dvh; padding: 36px max(24px, calc((100vw - 1060px) / 2)) 64px; color: #e8f4ed; background: #071713; font: 400 16px/1.8 Manrope, 'Segoe UI', sans-serif; overflow-wrap: anywhere; }
+.scenza-legal-header { padding-bottom: 24px; border-bottom: 1px solid #305045; }
+.scenza-legal-header a { display: inline-block; min-height: 44px; }
+.scenza-legal-page h1 { font-size: clamp(1.65rem, 4vw, 2.5rem); line-height: 1.25; margin: 24px 0 16px; }
+.scenza-legal-page h2 { font-size: 1.25rem; line-height: 1.45; margin: 32px 0 12px; }
+.scenza-legal-page p { margin: 0 0 14px; }
+.scenza-legal-body { max-width: 75ch; }
+.scenza-legal-notice { background: #24271a; border: 1px solid #656040; color: #e7e3c5; padding: 18px 22px; border-radius: 10px; margin: 24px 0; font-size: .9rem; }
+.scenza-legal-nav { display: flex; flex-wrap: wrap; gap: 8px 20px; margin-top: 36px; padding-top: 24px; border-top: 1px solid #305045; }
+.scenza-legal-nav a { min-height: 44px; }
+.scenza-legal-page ul { padding-left: 24px; margin: 0 0 18px; }
+.scenza-legal-header { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 16px; }
+.scenza-session-strip { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px; padding: 12px 24px; background: #0d3024; color: #d2f8e6; font-size: .8rem; }
+.scenza-session-strip a, .scenza-access-message a { color: #7beaca; text-decoration: underline; text-underline-offset: 3px; }
+.scenza-access-message { max-width: 650px; margin: 15vh auto; padding: 24px; line-height: 1.8; }
+.scenza-access-message button { display: block; margin-top: 20px; padding: 12px 24px; border: 1px solid #4b977d; border-radius: 8px; }
+@media (max-width: 560px) {
+  .scenza-dialog.scenza-auth-dialog { padding: 38px 19px 22px; }
+  .scenza-auth-dialog .scenza-auth-tabs button { font-size: .92rem; }
+  .scenza-auth-dialog .scenza-auth-heading h2 { font-size: 1.65rem; }
+  .scenza-auth-options { font-size: .8rem; }
+  .scenza-footer .scenza-legal-footer nav { justify-content: flex-start; gap: 5px 17px; }
+  .scenza-legal-footer p { text-align: left; }
+  .scenza-legal-page { padding-inline: 20px; }
+}

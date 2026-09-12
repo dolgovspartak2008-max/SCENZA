@@ -1,0 +1,43 @@
+.scenza-background-paths { position: relative; isolation: isolate; }
+.scenza-path-decoration { position: absolute; inset: 0; overflow: hidden; z-index: -1; pointer-events: none; mask-image: linear-gradient(transparent, #000 20%, #000 70%, transparent); }
+.scenza-floating-paths { position: absolute; width: 100%; height: 100%; color: var(--accent, #45f0d6); }
+.scenza-floating-paths-mirrored { transform: scaleX(-1); opacity: .48; }
+.scenza-animated-headline { text-wrap: balance; }
+.scenza-headline-word { display: inline-block; white-space: nowrap; perspective: 700px; }
+.scenza-headline-letter { display: inline-block; transform-origin: 50% 100%; }
+.scenza-headline-space { white-space: pre; }
+.scenza-headline-brand { color: var(--accent, #45f0d6); }
+.scenza-pricing { position: relative; isolation: isolate; }
+.scenza-pricing-confetti { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 4; }
+.scenza-pricing-particles { position: absolute; inset: -30px 0; pointer-events: none; overflow: hidden; z-index: -1; }
+.scenza-pricing-particles > span { position: absolute; width: 2px; height: 2px; border-radius: 50%; background: var(--accent, #45f0d6); opacity: .2; animation: scenza-particle-drift 10s ease-in-out infinite; }
+.scenza-demo-pricing { display: flex; justify-content: center; align-items: center; gap: 7px; margin: 0 0 18px; color: #a5c3c2; font-size: 12px; text-align: center; }
+.scenza-demo-pricing svg { flex-shrink: 0; color: var(--accent, #45f0d6); }
+.scenza-period-switch { display: flex; width: fit-content; padding: 4px; margin: 0 auto 40px; border: 1px solid var(--line, #1c363e); background: #071419; border-radius: 9px; }
+.scenza-period-switch button { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 40px; padding: 9px 18px; border: 0; background: transparent; color: var(--muted, #9caeb7); font: inherit; font-size: 12px; cursor: pointer; }
+.scenza-period-switch button > span:not(.scenza-period-indicator) { position: relative; z-index: 1; }
+.scenza-period-switch button[aria-pressed=true] { color: #e8faf5; }
+.scenza-period-switch button:focus-visible { outline: 2px solid var(--accent, #45f0d6); outline-offset: 4px; border-radius: 5px; }
+.scenza-period-indicator { position: absolute; inset: 0; border-radius: 6px; background: #17332f; box-shadow: inset 0 0 0 1px #2a5147; }
+.scenza-year-discount { font-size: 10px; color: var(--accent, #45f0d6); }
+.scenza-pricing-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; align-items: stretch; }
+.scenza-price-card { display: flex; flex-direction: column; min-width: 0; padding: 28px; border: 1px solid var(--line, #1c363e); border-radius: 13px; background: var(--panel, #0b191f); cursor: pointer; transition: border-color .2s, background-color .2s; }
+.scenza-price-card-selected { border-color: #338d80; background: linear-gradient(155deg, #102923 0%, var(--panel, #0b191f) 68%); box-shadow: 0 0 28px #45f0d607; }
+.scenza-plan-heading { display: flex; justify-content: space-between; align-items: center; gap: 7px; flex-wrap: wrap; }
+.scenza-plan-heading h3 { margin: 0; color: #edf7f5; font-size: 19px; font-weight: 650; }
+.scenza-recommended-label { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #316658; border-radius: 5px; padding: 4px 7px; color: #87eaca; font-size: 10px; line-height: 1.2; }
+.scenza-recommended-label > span { width: 4px; height: 4px; border-radius: 50%; background: var(--accent, #45f0d6); }
+.scenza-plan-description { min-height: 2.9em; margin: 14px 0 22px; color: var(--muted, #9caeb7); font-size: 12px; line-height: 1.55; }
+.scenza-plan-price { display: flex; flex-wrap: wrap; align-items: baseline; gap: 5px; color: #f0f7f6; font-size: clamp(32px, 3.1vw, 42px); font-weight: 650; letter-spacing: -.055em; line-height: 1.2; }
+.scenza-price-currency { font-size: 26px; font-weight: 450; }
+.scenza-price-period { margin-left: 2px; color: var(--muted, #9caeb7); font-size: 12px; font-weight: 400; letter-spacing: 0; }
+.scenza-annual-total { min-height: 1.6em; margin: 8px 0 24px; color: #85b4aa; font-size: 11px; line-height: 1.6; }
+.scenza-plan-features { display: grid; gap: 13px; margin: 0 0 30px; padding: 23px 0 0; border-top: 1px solid var(--line, #1c363e); list-style: none; }
+.scenza-plan-features li { display: flex; gap: 9px; color: #bfd0d3; font-size: 12px; line-height: 1.5; }
+.scenza-plan-features svg { color: #6bd7be; flex-shrink: 0; margin-top: 1px; }
+.scenza-plan-cta { width: 100%; margin-top: auto; font-size: 12px; }
+.scenza-pricing[data-motion-active=false] .scenza-pricing-particles > span { animation-play-state: paused; }
+@keyframes scenza-particle-drift { 0%, 100% { transform: translate(0, 0); opacity: .12; } 50% { transform: translate(6px, -17px); opacity: .42; } }
+@media (max-width: 850px) { .scenza-price-card { padding: 22px 18px; } .scenza-pricing-grid { gap: 12px; } .scenza-plan-heading { align-items: flex-start; } }
+@media (max-width: 650px) { .scenza-pricing-grid { grid-template-columns: 1fr; gap: 18px; } .scenza-price-card { padding: 26px; } .scenza-plan-description { min-height: 0; } .scenza-period-switch { margin-bottom: 28px; } .scenza-pricing-particles > span:nth-child(n+7) { display: none; } .scenza-plan-price { font-size: 39px; } }
+@media (prefers-reduced-motion: reduce) { .scenza-pricing-particles > span { animation: none; } .scenza-headline-letter { transform: none !important; opacity: 1 !important; } }

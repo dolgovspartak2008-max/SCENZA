@@ -1,0 +1,46 @@
+[
+  {
+    "id": "tihiy-gorod",
+    "file": "city.mp4",
+    "image": "city.jpg",
+    "title": "Тихий город",
+    "sourceCredit": "Tears of Steel · © Blender Foundation · mango.blender.org · CC BY 3.0 · фрагмент",
+    "sourceUrl": "https://mango.blender.org/",
+    "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+    "downloadUrl": "https://download.blender.org/demo/movies/ToS/tears_of_steel_720p.mov",
+    "start": 240
+  },
+  {
+    "id": "za-gorizontom",
+    "file": "coast.mp4",
+    "image": "coast.jpg",
+    "title": "За горизонтом",
+    "sourceCredit": "Big Buck Bunny · © 2008 Blender Foundation · www.bigbuckbunny.org · CC BY 3.0 · фрагмент",
+    "sourceUrl": "https://peach.blender.org/",
+    "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+    "downloadUrl": "https://download.blender.org/peach/bigbuckbunny_movies/big_buck_bunny_720p_h264.mov.zip",
+    "start": 120
+  },
+  {
+    "id": "posledniy-reys",
+    "file": "ship.mp4",
+    "image": "ship.jpg",
+    "title": "Последний рейс",
+    "sourceCredit": "Elephants Dream · © 2006 Blender Foundation / Netherlands Media Art Institute · www.elephantsdream.org · CC BY 2.5 · фрагмент",
+    "sourceUrl": "https://orange.blender.org/",
+    "licenseUrl": "https://creativecommons.org/licenses/by/2.5/",
+    "downloadUrl": "https://download.blender.org/ED/elephantsdream-720-h264-st-aac.mov",
+    "start": 80
+  },
+  {
+    "id": "do-rassveta",
+    "file": "dawn.mp4",
+    "image": "dawn.jpg",
+    "title": "До рассвета",
+    "sourceCredit": "Sintel · © Blender Foundation · www.sintel.org · CC BY 3.0 · фрагмент",
+    "sourceUrl": "https://durian.blender.org/",
+    "licenseUrl": "https://creativecommons.org/licenses/by/3.0/",
+    "downloadUrl": "https://download.blender.org/durian/movies/Sintel.2010.1080p.mkv",
+    "start": 150
+  }
+]
