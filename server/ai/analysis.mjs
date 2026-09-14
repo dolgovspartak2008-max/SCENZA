@@ -42,20 +42,22 @@ export function mergeWindowCandidates(windows) {
       return overlap / (kept.duration + candidate.duration - overlap) >= 0.7;
     });
     if (!duplicate) result.push(candidate);
-    if (result.length === 15) break;
+    if (result.length === 20) break;
   }
   return result;
 }
 
 export async function analyzeLongVideo({ duration, analysis, cache, analyze, summarize, select, persist, onProgress }) {
   const windows = analysisWindows(duration), results = [];
+  const final = cache.find(entry => entry.kind === 'final' && entry.duration === duration && entry.version === 3);
+  if (final) return { ...final.result, candidates: validateCandidates(final.result, duration) };
   const overview = [];
   if (summarize) for (const window of windows) {
     await onProgress?.({ phase: 'overview', completed: overview.length, total: windows.length });
-    let saved = cache.find(entry => entry.start === window.start && entry.end === window.end && entry.overview && entry.version === 2);
+    let saved = cache.find(entry => entry.start === window.start && entry.end === window.end && entry.overview && entry.version === 3);
     if (!saved) {
       const result = await summarize(window, windowMetadata(analysis, window));
-      saved = { ...window, overview: result.overview, model: result.model, version: 2 };
+      saved = { ...window, overview: result.overview, model: result.model, version: 3, ...(Array.isArray(result.candidates) ? { candidates: validateCandidates(result, window.end - window.start, { requireStory: true }) } : {}) };
       cache.push(saved);
       try { await persist(); } catch (error) { cache.pop(); throw error; }
     }
@@ -63,10 +65,10 @@ export async function analyzeLongVideo({ duration, analysis, cache, analyze, sum
   }
   for (const window of windows) {
     await onProgress?.({ completed: results.length, total: windows.length });
-    let saved = cache.find(entry => entry.start === window.start && entry.end === window.end && Array.isArray(entry.candidates) && (!summarize || entry.version === 2));
+    let saved = cache.find(entry => entry.start === window.start && entry.end === window.end && Array.isArray(entry.candidates) && (!summarize || entry.version === 3));
     if (!saved) {
       const result = await analyze(window, windowMetadata(analysis, window), { sourceDuration: duration, windowStart: window.start, overview });
-      saved = { ...window, candidates: validateCandidates(result, window.end - window.start, { requireStory: !!summarize }), model: result.model, ...(summarize ? { version: 2 } : {}) };
+      saved = { ...window, candidates: validateCandidates(result, window.end - window.start, { requireStory: !!summarize }), model: result.model, ...(summarize ? { version: 3 } : {}) };
       cache.push(saved);
       try { await persist(); }
       catch (error) { cache.pop(); throw error; }
@@ -74,6 +76,12 @@ export async function analyzeLongVideo({ duration, analysis, cache, analyze, sum
     results.push(saved);
   }
   await onProgress?.({ completed: results.length, total: windows.length });
-  if (select) return select({ duration, candidates: mergeWindowCandidates(results), overview, transcript: analysis.segments || [] });
+  if (select) {
+    const result = await select({ duration, candidates: mergeWindowCandidates(results), overview, transcript: analysis.segments || [] });
+    validateCandidates(result, duration);
+    cache.push({ kind: 'final', duration, version: 3, result });
+    try { await persist(); } catch (error) { cache.pop(); throw error; }
+    return result;
+  }
   return { candidates: mergeWindowCandidates(results), model: [...new Set(results.map(result => result.model))].join(' / ') };
 }

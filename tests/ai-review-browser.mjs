@@ -30,6 +30,7 @@ await page.route('**/api/video/**', async route => {
   const request = route.request(), url = new URL(request.url()), method = request.method();
   const json = value => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(value) });
   if (url.pathname === '/api/video/config') return json({ aiReady: true, maxFileSize: 20 * 1024 ** 3, chunkSize: 8 * 1024 ** 2 });
+  if (url.pathname === '/api/video/usage') return json({ month: '2026-09', sourceMinutes: 120, sourceCount: 2, editRequests: 3 });
   if (url.pathname === '/api/video/projects' && method === 'GET') return json({ projects: [fixture('COMPLETED'), { ...fixture('READY'), id: 'not-exported', title: 'Проект без готовых роликов' }] });
   if (url.pathname.startsWith('/api/video/projects/visual-fixture/files/')) {
     const image = url.pathname.endsWith('/banner'), body = image ? banner : video;
@@ -129,14 +130,15 @@ try {
           assert.equal(requests.findLast(r => r.action === 'restore').body.versionId, 'version-one');
         }
         if (state === 'ADDING_AD') {
-          await page.getByRole('img', { name: 'Ваш рекламный баннер' }).waitFor();
+          await page.getByRole('img', { name: 'Загруженное рекламное изображение' }).waitFor();
+          assert.match(await page.locator('.ai-ad input[type=file]').getAttribute('accept'), /\.mp4/);
           assert.equal(await page.getByRole('button', { name: 'Экспортировать MP4', exact: true }).isDisabled(), false);
           await screenshot('advertisement', width);
-          await page.getByLabel('Положение').selectOption('bottom');
+          await page.getByLabel('Положение').selectOption('bottom-right');
           assert.equal(await page.getByRole('button', { name: 'Экспортировать MP4', exact: true }).isDisabled(), true);
           await page.getByRole('button', { name: 'Предпросмотр рекламы', exact: true }).click();
           await page.waitForFunction(() => !Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Экспортировать MP4')?.disabled);
-          assert.equal(requests.findLast(r => r.action === 'advertisement').body.position, 'bottom');
+          assert.equal(requests.findLast(r => r.action === 'advertisement').body.position, 'bottom-right');
           assert.ok(requests.some(r => r.action === 'ad-preview'));
           await page.getByText('Изменить формат', { exact: true }).click();
           await page.getByLabel('Новый формат', { exact: true }).selectOption('16:9');
@@ -170,7 +172,7 @@ try {
     await page.goto(`${base}/app/ai/visual-fixture`);
     await page.getByRole('heading',{name:'Готовые ролики',exact:true}).waitFor();
     assert.equal(await page.getByRole('link',{name:'Скачать MP4',exact:true}).count(),2);
-    await page.getByRole('heading',{name:'Рекламный баннер — по желанию'}).waitFor();
+    await page.getByRole('heading',{name:'Реклама — по желанию'}).waitFor();
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
     await page.getByRole('button',{name:'Настроить ролик',exact:true}).first().click();
     await page.locator('.ai-review').waitFor();

@@ -39,6 +39,33 @@ test('every source window is summarized before story selection and final selecti
   assert.equal(result.candidates[0].segments.length, 2);
 });
 
+test('combined window evidence and final version 3 results are reused without another video or selection request', async () => {
+  const calls = [], cache = [{ start: 0, end: 1800, version: 2, overview: { summary: 'Устаревший анализ', events: [] }, candidates: [] }];
+  let persists = 0;
+  const input = { duration: 3600, analysis: { segments: [] }, cache,
+    async persist() { persists++; },
+    async summarize(window) {
+      calls.push(`video:${window.start}`);
+      return { overview: { summary: `Содержание ${window.start}`, events: [{ start: 1, end: 30, description: 'Событие' }] }, candidates: [candidate([{ start: 10, end: 40 }])], model: 'test' };
+    },
+    async analyze() { assert.fail('Saved first-pass candidates must not trigger a second video analysis'); },
+    async select(evidence) {
+      calls.push('select');
+      assert.deepEqual(evidence.candidates.map(item => item.start), [10, 1690, 3370]);
+      assert.deepEqual(evidence.overview.map(item => item.events[0].start), [1, 1681, 3361]);
+      return { candidates: [candidate([{ start: 10, end: 40 }, { start: 1690, end: 1720 }])], model: 'test' };
+    },
+  };
+  const result = await analyzeLongVideo(input);
+  assert.deepEqual(calls, ['video:0', 'video:1680', 'video:3360', 'select']);
+  assert.equal(persists, 4);
+  assert.equal(cache.filter(entry => entry.version === 3 && entry.overview && entry.candidates).length, 3);
+  assert.deepEqual(cache.at(-1), { kind: 'final', duration: 3600, version: 3, result });
+  assert.deepEqual(await analyzeLongVideo(input), result);
+  assert.equal(calls.length, 4);
+  assert.equal(persists, 4);
+});
+
 test('word boundaries and grounded highlights survive every edited source range', () => {
   const input = candidate([{ start: 10.2, end: 30 }, { start: 300, end: 319.7 }]);
   const result = preserveWords([input], [{ start: 10, end: 31, text: 'открытие', words: [{ start: 10, end: 11, word: 'открытие' }] }, { start: 319, end: 320, text: 'вывод', words: [{ start: 319, end: 320, word: 'вывод' }] }], 600)[0];
@@ -53,8 +80,10 @@ test('global story review joins evidenced scenes and refuses new footage or lega
   let output = candidate();
   const provider = new OpenRouterProvider({ apiKey: 'test', fetcher: async (_url, options) => {
     const body = JSON.parse(options.body);
-    assert.equal(body.model, 'google/gemini-2.5-flash-lite');
+    assert.equal(body.model, 'google/gemini-3.8-flash');
+    assert.ok(body.messages[1].content.every(part => part.type === 'text'));
     assert.match(body.messages[1].content[0].text, /FULL SOURCE/);
+    assert.match(body.messages[1].content[0].text, /best 5–10 DISTINCT complete stories/);
     return Response.json({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ candidates: [output] }) } }] });
   } });
   assert.equal(typeof provider.selectStories, 'function');
@@ -62,6 +91,21 @@ test('global story review joins evidenced scenes and refuses new footage or lega
   assert.equal((await provider.selectStories(input)).candidates[0].duration, 40);
   output = candidate([{ start: 100, end: 120 }]);
   await assert.rejects(() => provider.selectStories(input), { code: 'AI_INVALID_RESPONSE' });
+});
+
+test('global review accepts ten distinct stories but rejects an eleventh and skips empty evidence', async () => {
+  const candidates = Array.from({ length: 11 }, (_, index) => candidate([{ start: index * 50, end: index * 50 + 30 }]));
+  let count = 10, calls = 0;
+  const provider = new OpenRouterProvider({ apiKey: 'test', fetcher: async () => {
+    calls++;
+    return Response.json({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify({ candidates: candidates.slice(0, count) }) } }] });
+  } });
+  const input = { duration: 600, candidates, overview: [], transcript: [] };
+  assert.equal((await provider.selectStories(input)).candidates.length, 10);
+  count = 11;
+  await assert.rejects(provider.selectStories(input), { code: 'AI_INVALID_RESPONSE' });
+  assert.deepEqual((await provider.selectStories({ ...input, candidates: [] })).candidates, []);
+  assert.equal(calls, 2);
 });
 
 test('model arithmetic is derived from segments without weakening source interval validation', async () => {

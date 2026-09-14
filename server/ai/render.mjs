@@ -8,6 +8,13 @@ export const fail = (message, status = 400) => Object.assign(new Error(message),
 const styles = ['Minimal', 'Classic', 'Dynamic', 'Bold', 'Cinematic'];
 const timeline = settings => settings.segments || [{ start: settings.start, end: settings.end }];
 export const timelineDuration = settings => timeline(settings).reduce((total, segment) => total + segment.end - segment.start, 0);
+export function normalizeAd(input, clipDuration) {
+  const duration = input.duration ?? Math.min(5, clipDuration);
+  const ad = { position: 'auto', width: 45, start: Math.max(0, (clipDuration - duration) / 2), duration, opacity: 1, ...input };
+  if (!Number.isFinite(clipDuration) || clipDuration <= 0 || !['auto','strip','top','bottom','center','final','top-left','top-right','bottom-left','bottom-right'].includes(ad.position)
+    || !['width','start','duration','opacity'].every(key => Number.isFinite(ad[key])) || ad.width < 10 || ad.width > 80 || ad.start < 0 || ad.start >= clipDuration || ad.duration <= 0 || ad.duration > clipDuration || (ad.position !== 'final' && ad.start + ad.duration > clipDuration + .001) || ad.opacity < 0 || ad.opacity > 1) throw fail('Проверьте размер, время и прозрачность рекламы: она должна помещаться в ролике.');
+  return ad;
+}
 export function normalizeSettings(input, duration) {
   const settings = { start: 0, end: Math.min(duration, 30), format: '9:16', cropX: 50, cropMode: 'smart', cropSmoothing: 0.7, muted: false, subtitles: true, subtitleStyle: 'Classic', subtitleSize: 54, subtitleColor: '', subtitlePosition: 'bottom', subtitleReplacements: [], keywords: [], musicId: '', musicVolume: 0.18, ...input };
   if (settings.segments !== undefined) {
@@ -152,14 +159,18 @@ export function buildSubtitles(segments, settings, width, height) {
   }
   return result;
 }
-export function cropExpression(tracking, settings) {
-  if (settings.cropMode === 'manual') return `(iw-ow)*${settings.cropX / 100}`;
+function smoothedCropPoints(tracking, settings) {
   const available = tracking.filter(p => p.time >= settings.start - 1 && p.time <= settings.end && Number.isFinite(p.x));
   const stride = Math.max(1, Math.ceil(available.length / 120));
   const points = available.filter((_, i) => i % stride === 0 || i === available.length - 1);
-  if (!points.length) return `(iw-ow)*${settings.cropX / 100}`;
+  if (!points.length) return [];
   let value = Math.max(0, Math.min(1, points[0].x));
-  const smooth = points.map(p => { value += (Math.max(0, Math.min(1, p.x)) - value) * (1 - settings.cropSmoothing * .85); return { t: Math.max(0, p.time - settings.start), x: Number(value.toFixed(4)) }; });
+  return points.map(p => { value += (Math.max(0, Math.min(1, p.x)) - value) * (1 - settings.cropSmoothing * .85); return { t: Math.max(0, p.time - settings.start), x: Number(value.toFixed(4)) }; });
+}
+export function cropExpression(tracking, settings) {
+  if (settings.cropMode === 'manual') return `(iw-ow)*${settings.cropX / 100}`;
+  const smooth=smoothedCropPoints(tracking,settings);
+  if (!smooth.length) return `(iw-ow)*${settings.cropX / 100}`;
   // Independent ramps preserve interpolation without exceeding FFmpeg's expression nesting limit.
   let expression = String(smooth[0].x);
   for (let i = 0; i < smooth.length - 1; i++) {
@@ -167,6 +178,21 @@ export function cropExpression(tracking, settings) {
     expression += `+(${b.x}-${a.x})*clip((t-${a.t})/${Math.max(.01,b.t-a.t)},0,1)`;
   }
   return `clip(iw*(${expression})-ow/2,0,iw-ow)`;
+}
+function reliableFaceCrop(analysis, settings, width, height) {
+  if (!(analysis.width > 0 && analysis.height > 0)) return false;
+  const points=(analysis.tracking||[]).filter(point=>point.time>=settings.start&&point.time<settings.end);
+  // Sparse frontal-face samples cannot safely guide a crop across undetected shots.
+  if(points.length<2||points[0].time-settings.start>.6||settings.end-points.at(-1).time>.6||points.some((point,i)=>i>0&&(point.time<=points[i-1].time||point.time-points[i-1].time>.6)))return false;
+  const smooth=smoothedCropPoints(analysis.tracking,settings), ratio=(width/height)/(analysis.width/analysis.height), cropWidth=Math.min(1,ratio), cropHeight=Math.min(1,1/ratio);
+  return points.every(point=>{
+    if(!Number.isFinite(point.x)||!point.faces?.length)return false;
+    const t=point.time-settings.start;
+    let center=smooth[0].x;
+    for(let i=0;i<smooth.length-1;i++)center+=(smooth[i+1].x-smooth[i].x)*Math.max(0,Math.min(1,(t-smooth[i].t)/Math.max(.01,smooth[i+1].t-smooth[i].t)));
+    const left=Math.max(0,Math.min(1-cropWidth,center-cropWidth/2)),top=(1-cropHeight)/2;
+    return point.faces.every(face=>['x','y','width','height'].every(key=>Number.isFinite(face[key]))&&face.width>0&&face.height>0&&face.x>=left+.01&&face.x+face.width<=left+cropWidth-.01&&face.y>=top+.01&&face.y+face.height<=top+cropHeight-.01);
+  });
 }
 export function safeAdPosition(tracking, settings) {
   const occupancy = { top: 0, bottom: 0, center: 0 };
@@ -184,7 +210,7 @@ export async function render({ input, output, settings, analysis = {}, ad, music
   const parts = timeline(settings), duration = timelineDuration(settings), cwd = path.dirname(output), subtitle = `${path.basename(output, '.mp4')}.ass`;
   const args = parts.flatMap(part => ['-ss', String(part.start), '-t', String(part.end - part.start), '-protocol_whitelist', 'file,pipe', '-i', input]);
   let index = parts.length, adIndex, musicIndex;
-  if (ad?.file) { adIndex = index++; args.push('-loop', '1', '-i', ad.file); }
+  if (ad?.file) { adIndex = index++; args.push(...(ad.kind === 'video' ? ['-stream_loop', '-1'] : ['-loop', '1']), '-protocol_whitelist', 'file,pipe', '-i', ad.file); }
   if (music) { musicIndex = index++; args.push('-stream_loop', '-1', '-i', music); }
   // Source-space face bounds cannot prove an overlay safe after cropping, or protect untracked objects.
   const position = ad?.position === 'auto' ? 'strip' : ad?.position;
@@ -192,7 +218,7 @@ export async function render({ input, output, settings, analysis = {}, ad, music
   const pictureHeight = strip ? Math.floor(height * .75 / 2) * 2 : height;
   const voice = Boolean(analysis.hasAudio && !settings.muted);
   const chains = parts.map((part, i) => {
-    const trackedFaces = (analysis.tracking || []).some(point => point.time >= part.start && point.time <= part.end && point.faces?.length);
+    const trackedFaces = reliableFaceCrop(analysis, { ...settings, ...part }, width, pictureHeight);
     const preserveFrame = strip || (settings.cropMode === 'smart' && !trackedFaces);
     let chain = preserveFrame
       ? `[${i}:v]setpts=PTS-STARTPTS,split[sharp${i}][soft${i}];[soft${i}]scale=${width}:${pictureHeight}:force_original_aspect_ratio=increase,crop=${width}:${pictureHeight},boxblur=20:2,eq=brightness=-0.12[background${i}];[sharp${i}]scale=${width}:${pictureHeight}:force_original_aspect_ratio=decrease[foreground${i}];[background${i}][foreground${i}]overlay=(W-w)/2:(H-h)/2,setsar=1[v${i}]`
@@ -209,9 +235,10 @@ export async function render({ input, output, settings, analysis = {}, ad, music
   }
   if (strip) { filters += `;[${video}]pad=${width}:${height}:0:0:color=0x101010[reserved]`; video = 'reserved'; }
   if (ad?.file) {
-    const y = strip ? `${pictureHeight}+(H-${pictureHeight}-h)/2` : position === 'top' ? 'H*0.1' : position === 'center' || position === 'final' ? '(H-h)/2' : 'H*0.78-h';
+    const y = strip ? `${pictureHeight}+(H-${pictureHeight}-h)/2` : position?.startsWith('top') ? 'H*0.1' : position === 'center' || position === 'final' ? '(H-h)/2' : 'H*0.78-h';
+    const x = position?.endsWith('-left') ? 'W*0.02' : position?.endsWith('-right') ? 'W-w-W*0.02' : '(W-w)/2';
     const start = position === 'final' ? Math.max(0, duration-ad.duration) : ad.start;
-    filters += `;[${adIndex}:v]scale=${Math.round(width * ad.width / 100)}:${Math.round(height*.25)}:force_original_aspect_ratio=decrease,format=rgba,colorchannelmixer=aa=${ad.opacity}[ad];[${video}][ad]overlay=(W-w)/2:${y}:shortest=1:enable='between(t,${start},${Math.min(duration,start+ad.duration)})'[advertised]`; video = 'advertised';
+    filters += `;[${adIndex}:v]setpts=PTS-STARTPTS+${start}/TB,scale=${Math.round(width * ad.width / 100)}:${Math.round(height*.25)}:force_original_aspect_ratio=decrease,format=rgba,colorchannelmixer=aa=${ad.opacity}[ad];[${video}][ad]overlay=${x}:${y}:eof_action=pass:enable='gte(t,${start})*lt(t,${Math.min(duration,start+ad.duration)})'[advertised]`; video = 'advertised';
   }
   if (music) {
     filters += `;[${musicIndex}:a]atrim=duration=${duration},asetpts=PTS-STARTPTS,volume=${settings.musicVolume}[music]`;

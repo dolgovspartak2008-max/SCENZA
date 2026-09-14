@@ -8,6 +8,21 @@ const load = () => import('../server/ai/openai.mjs');
 const candidate = (start = 1, end = 11, score = 90) => ({ start, end, duration: end - start, score, title: 'Момент', description: 'Событие', hook: 'Начало', category: 'Рассказ', reason: 'Завершённая мысль', recommended_format: '9:16', recommended_editing: [], segments: [{ start, end }], story: { setup: 'Вопрос', development: 'Выбор', payoff: 'Решение', ending: 'Вывод' }, keywords: [] });
 const answer = value => Response.json({ choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(value) } }] });
 
+test('OpenRouter defaults to separate Gemini models and validates configurable model identifiers', async () => {
+  const { OpenRouterProvider, PRIMARY_VIDEO_MODEL, FAST_EDIT_MODEL } = await load();
+  assert.equal(PRIMARY_VIDEO_MODEL, 'google/gemini-3.8-flash');
+  assert.equal(FAST_EDIT_MODEL, 'google/gemini-3.5-flash-lite');
+  const provider = new OpenRouterProvider({ apiKey: 'test' });
+  assert.equal(provider.model, PRIMARY_VIDEO_MODEL);
+  assert.equal(provider.editModel, FAST_EDIT_MODEL);
+  const custom = new OpenRouterProvider({ apiKey: 'test', model: 'google/gemini-2.5-flash', editModel: 'google/gemini-2.5-flash-lite' });
+  assert.equal(custom.model, 'google/gemini-2.5-flash');
+  assert.equal(custom.editModel, 'google/gemini-2.5-flash-lite');
+  for (const key of ['model', 'editModel']) for (const value of ['', 'gemini', 'google/model extra', 'https://example.com/model', null]) {
+    assert.throws(() => new OpenRouterProvider({ apiKey: 'test', [key]: value }), { code: 'AI_CONFIG_ERROR' });
+  }
+});
+
 test('frame sampling covers the full timeline and short scenes, with bounded dense review', async () => {
   const { frameTimes } = await load();
   const times = frameTimes(1800, [{ start: 71, end: 72 }]);
@@ -22,7 +37,7 @@ test('frame sampling covers the full timeline and short scenes, with bounded den
   for (const duration of [0, -1, NaN, 1801]) assert.throws(() => frameTimes(duration, []));
 });
 
-test('Gemini edit request uses authenticated OpenRouter API and preserves sparse patches', async () => {
+test('Gemini Lite edit request uses authenticated OpenRouter API and preserves sparse patches', async () => {
   const { OpenRouterProvider } = await load();
   let calls = 0;
   const ai = new OpenRouterProvider({ apiKey: 'test-private-key', fetcher: async (url, options) => {
@@ -31,7 +46,7 @@ test('Gemini edit request uses authenticated OpenRouter API and preserves sparse
     assert.equal(options.headers.Authorization, 'Bearer test-private-key');
     assert.equal(options.redirect, 'error');
     const body = JSON.parse(options.body);
-    assert.equal(body.model, 'google/gemini-2.5-flash-lite');
+    assert.equal(body.model, 'google/gemini-3.5-flash-lite');
     assert.equal(body.provider.require_parameters, true);
     assert.equal(body.messages[0].role, 'system');
     assert.equal(body.response_format.json_schema.strict, true);
@@ -100,53 +115,67 @@ test('API readiness and analysis queue require the OpenRouter key, not previous 
   } finally { await api.close(); await store.close(); assert.ok(folder.startsWith(root + path.sep)); await rm(folder, { recursive: true, force: true }); }
 });
 
-test('real video becomes timestamped JPEG evidence; dense pass refines, deduplicates and cleans temporary files', { timeout: 60000 }, async () => {
+test('full video is sent once; metadata review refines and deduplicates while summaries retain candidates', { timeout: 60000 }, async () => {
   const { OpenRouterProvider } = await load();
   const root = path.resolve('.scena/test-ai'); await mkdir(root, { recursive: true });
   const folder = await mkdtemp(path.join(root, 'luna-'));
   try {
     const filePath = path.join(folder, 'input.mp4');
     await ff(['-f', 'lavfi', '-i', 'testsrc2=size=320x180:rate=2:duration=12', '-c:v', 'libx264', filePath]);
+    const video = await readFile(filePath);
+    const overview = { summary: 'Полная сцена', events: [{ start: 0, end: 12, description: 'Содержание всей сцены' }] };
     let calls = 0;
     const ai = new OpenRouterProvider({ apiKey: 'test', fetcher: async (_url, options) => {
       const body = JSON.parse(options.body), content = body.messages[1].content;
       assert.doesNotMatch(JSON.stringify(body.response_format.json_schema.schema), /"(?:minimum|maximum|minLength|maxLength|minItems|maxItems)":/);
-      const images = content.filter(item => item.type === 'image_url');
-      assert.ok(images.length > 0);
-      for (const image of images) {
-        assert.ok(image.image_url.url.startsWith('data:image/jpeg;base64,'));
-        assert.equal(Buffer.from(image.image_url.url.split(',')[1], 'base64').readUInt16BE(0), 0xffd8);
-      }
+      assert.equal(body.model, 'google/gemini-3.8-flash');
+      assert.ok(content.every(item => item.type !== 'image_url'));
       assert.match(JSON.stringify(content), /Реплика/);
       calls++;
+      if (calls === 1) {
+        assert.deepEqual(body.response_format.json_schema.schema.required, ['overview', 'candidates']);
+        const videos = content.filter(item => item.type === 'video_url');
+        assert.equal(videos.length, 1);
+        assert.ok(videos[0].video_url.url.startsWith('data:video/mp4;base64,'));
+        assert.deepEqual(Buffer.from(videos[0].video_url.url.split(',')[1], 'base64'), video);
+        return answer({ overview, candidates: [candidate()] });
+      }
       if (calls === 2) {
+        assert.ok(content.every(item => item.type === 'text'));
         assert.match(content[0].text, /"start":0\.5/);
         assert.match(content[0].text, /"end":11\.5/);
       }
-      return answer({ candidates: calls === 1 ? [candidate()] : [candidate(0.5, 11.5, 95), candidate(0.6, 11.4, 80)] });
+      return answer({ candidates: [candidate(0.5, 11.5, 95), candidate(0.6, 11.4, 80)] });
     } });
     const result = await ai.analyzeVideo({ filePath, duration: 12, transcript: [{ start: 0.5, end: 11.5, text: 'Реплика целиком.', words: [{ start: 0.5, end: 1.5, word: 'Реплика' }, { start: 10.5, end: 11.5, word: 'целиком.' }] }], scenes: [{ start: 0, end: 12 }] });
     assert.equal(calls, 2);
-    assert.equal(result.model, 'google/gemini-2.5-flash-lite');
+    assert.equal(result.model, 'google/gemini-3.8-flash');
     assert.deepEqual(result.candidates, [candidate(0.5, 11.5, 95)]);
+    assert.deepEqual(result.overview, overview);
+    assert.deepEqual(result.initialCandidates, [candidate(0.5, 11.5)]);
     assert.deepEqual(await readdir(folder), ['input.mp4']);
-    const overview = { summary: 'Полная сцена', events: [{ start: 0, end: 12, description: 'Содержание всей сцены' }] };
+    let summaryCalls = 0;
     const summarizer = new OpenRouterProvider({ apiKey: 'test', fetcher: async (_url, options) => {
+      summaryCalls++;
       const body = JSON.parse(options.body);
-      assert.ok(body.messages[1].content.some(part => part.type === 'image_url'));
+      assert.ok(body.messages[1].content.some(part => part.type === 'video_url'));
       assert.match(body.messages[1].content[0].text, /BEFORE choosing clips/);
-      return answer({ overview });
+      return answer({ overview, candidates: [candidate()] });
     } });
-    assert.deepEqual((await summarizer.summarizeVideo({ filePath, duration: 12 })).overview, overview);
+    assert.deepEqual(await summarizer.summarizeVideo({ filePath, duration: 12 }), { overview, candidates: [candidate()], model: 'google/gemini-3.8-flash' });
+    assert.equal(summaryCalls, 1);
     assert.deepEqual(await readdir(folder), ['input.mp4']);
     const audioTail = path.join(folder, 'audio-tail.mp4');
     await ff(['-i', filePath, '-f', 'lavfi', '-i', 'sine=frequency=440:duration=12', '-c:v', 'copy', '-c:a', 'aac', audioTail]);
+    let tailCalls = 0;
     const tail = new OpenRouterProvider({ apiKey: 'test', fetcher: async (_url, options) => {
+      tailCalls++;
       const body = JSON.parse(options.body);
       assert.match(JSON.stringify(body.messages), /visualDuration/);
-      return answer({ candidates: [] });
+      return answer({ overview, candidates: [] });
     } });
     assert.deepEqual((await tail.analyzeVideo({ filePath: audioTail, duration: 12 })).candidates, []);
+    assert.equal(tailCalls, 1);
     const cancelled = new OpenRouterProvider({ apiKey: 'test', fetcher: async () => { throw new Error('Should not call'); } });
     await assert.rejects(cancelled.analyzeVideo({ filePath, duration: 12, signal: AbortSignal.abort() }), { code: 'AI_CANCELLED' });
     assert.deepEqual((await readdir(folder)).sort(), ['audio-tail.mp4', 'input.mp4']);

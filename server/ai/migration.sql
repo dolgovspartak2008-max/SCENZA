@@ -115,6 +115,7 @@ grant execute on function public.scenza_video_retry(text,text) to service_role;
 
 -- Admin controls and actual provider usage. Apply this extension on existing deployments too.
 create table if not exists public.scenza_ai_usage (id text primary key,payload jsonb not null);
+create index if not exists scenza_ai_usage_owner_month on public.scenza_ai_usage ((payload->>'ownerId'), (left(payload->>'createdAt',7)));
 alter table public.scenza_ai_usage enable row level security;
 revoke all on public.scenza_ai_usage from anon,authenticated;
 grant select,insert on public.scenza_ai_usage to service_role;

@@ -26,6 +26,7 @@ export function readProductionConfig(env = process.env, config = {}) {
   const botsEnabled = !!(clientToken || config.adminToken);
   if (botsEnabled) {
     if (typeof clientToken !== 'string' || !/^\d{5,20}:[A-Za-z0-9_-]{20,100}$/.test(clientToken)) throw new Error('Telegram: нужен корректный токен SCENZA_BOT.');
+    if (config.adminToken !== undefined && (typeof config.adminToken !== 'string' || !/^\d{5,20}:[A-Za-z0-9_-]{20,100}$/.test(config.adminToken))) throw new Error('Telegram: нужен корректный токен админ-бота.');
     if (!Array.isArray(config.ownerTelegramIds) || !config.ownerTelegramIds.length || config.ownerTelegramIds.some(id => !/^\d{1,16}$/.test(String(id)))) throw new Error('Telegram: укажите числовые ID владельцев.');
   }
   return {
@@ -46,6 +47,7 @@ export function readProductionConfig(env = process.env, config = {}) {
     },
     botOptions: botsEnabled && env.SCENA_BOTS_ENABLED !== 'false' ? {
       clientToken,
+      ...(config.adminToken ? { adminToken: config.adminToken } : {}),
       siteUrl: publicOrigin, registrationEnabled: config.registrationEnabled === true,
       stateFile: path.join(dataDir, 'telegram-offsets.json'),
     } : null,

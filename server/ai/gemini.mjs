@@ -16,13 +16,14 @@ export const candidateProperties = {
   story: { type: 'object', properties: { setup: text(500), development: text(500), payoff: text(500), ending: text(500) }, required: ['setup', 'development', 'payoff', 'ending'], additionalProperties: false },
   keywords: { type: 'array', maxItems: 20, items: text(100) },
 };
-export const storySelection = 'Create 2–5 complete, publication-ready stories for TikTok/Reels/Shorts, at most 6 when justified. One interesting moment means one complete STORY, never one second of video. Prefer fewer strong stories to filler; return an empty list when evidence is insufficient. First understand the entire source: plot, themes, dialogue, conflict, humor, surprises and emotional or informative payoff. Each story must have an evidence-backed opening hook, enough setup, meaningful development, a climax/payoff and a logical ending. Preserve context before and after the event, complete sentences and natural speech. Usually keep 20–60 seconds; allow up to 120 seconds when needed, never compress a story into isolated one-second highlights. Prefer one continuous scene whenever it tells the complete story. Preserve short natural pauses under one second; do not split at every sentence or spoken phrase. Use segments in EDIT ORDER to join a few coherent source ranges, remove dead air and irrelevant passages, and reorder only when the meaning remains truthful and clear. Each segment must last at least 2 seconds and total edited duration at least 8 seconds (for source shorter than 8 seconds keep its full length); prefer long complete scenes over frequent cuts. No repeated or overlapping source segments. start/end is the enclosing MIN(start)/MAX(end) of the source segments, potentially spanning more than 120 source seconds; duration is the SUM of segment lengths, at most 120 seconds. story.setup/development/payoff/ending must explain the real narrative beats. keywords must be exact words or phrases spoken in the selected transcript, empty if no speech evidence. Avoid duplicate stories and generic high scores. Never invent quotes, action, sounds or assets. Recommended format is 9:16. Return the supplied JSON schema.';
+export const storySelection = 'Find complete publication-ready stories for TikTok/Reels/Shorts. For a 30-minute source shortlist 10–20 distinct candidates, then select the best 5–10; fewer are better when quality is insufficient. Review the entire source, understanding topics, dialogue, conflict, humor, emotion and useful conclusions. Each story needs an evidence-backed hook, sufficient setup, meaningful development and a logical ending. Target 50–120 seconds, preserving complete sentences and context; allow a shorter scene only when it is already a complete story or the source is short. Never default to 5–30-second snippets or pad weak scenes. Prefer continuous scenes and preserve natural pauses. Use a few segments in EDIT ORDER only to remove irrelevant passages or truthfully join coherent scenes. Each segment must last at least 2 seconds and total edited duration at least 8 seconds (for source shorter than 8 seconds keep its full length). No repeated or overlapping segments. start/end encloses MIN(start)/MAX(end), possibly spanning more than 120 source seconds; duration is the SUM of segment lengths, at most 120 seconds. story.setup/development/payoff/ending must describe real narrative beats. keywords must be exact spoken words from the transcript, empty without speech evidence. Avoid duplicates, unsupported clickbait and generic high scores. Never invent quotes, action, audio or assets. Never add music automatically. Recommend 9:16 by default but allow 16:9 and 1:1 when appropriate. Return the supplied JSON schema.';
 
 export function candidateSegments(candidate) { return candidate.segments?.length ? candidate.segments : [{ start: candidate.start, end: candidate.end }]; }
 export function candidateOverlap(left, right) {
   return candidateSegments(left).reduce((sum, a) => sum + candidateSegments(right).reduce((overlap, b) => overlap + Math.max(0, Math.min(a.end, b.end) - Math.max(a.start, b.start)), 0), 0);
 }
 const editProperties = {
+  ad: { type: 'object', properties: { position: choice(['auto', 'top', 'bottom', 'center', 'final', 'top-left', 'top-right', 'bottom-left', 'bottom-right']), width: number(10, 80), start: number(0, 120), duration: number(0.1, 120), opacity: number(0, 1) }, required: [], additionalProperties: false },
   segments: candidateProperties.segments, keywords: candidateProperties.keywords,
   start: number(0, Number.MAX_SAFE_INTEGER), end: number(0, Number.MAX_SAFE_INTEGER),
   cropX: number(0, 100), format: choice(formats), cropMode: choice(['smart', 'manual']),
@@ -42,7 +43,7 @@ const valid = (value, schema) => {
   if (schema.type === 'number') return Number.isFinite(value) && value >= schema.minimum && value <= schema.maximum;
   if (schema.type === 'boolean') return typeof value === 'boolean';
   if (schema.type === 'array') return Array.isArray(value) && value.length >= (schema.minItems || 0) && value.length <= schema.maxItems && value.every(item => valid(item, schema.items));
-  if (schema.type === 'object') return object(value) && schema.required.every(key => Object.hasOwn(value, key)) && Object.entries(value).every(([key, item]) => Object.hasOwn(schema.properties, key) && valid(item, schema.properties[key]));
+  if (schema.type === 'object') return object(value) && (schema.required || []).every(key => Object.hasOwn(value, key)) && Object.entries(value).every(([key, item]) => Object.hasOwn(schema.properties, key) && valid(item, schema.properties[key]));
   return typeof value === 'string' && (schema.enum ? schema.enum.includes(value) : value.trim().length >= schema.minLength && value.length <= schema.maxLength && (!schema.pattern || new RegExp(schema.pattern).test(value)));
 };
 function timeline(start, end, duration) {
@@ -60,7 +61,7 @@ function editTimeline(settings, duration) {
 }
 
 export function validateCandidates(value, duration, { requireStory = false } = {}) {
-  if (!Number.isFinite(duration) || duration <= 0 || !object(value) || !Array.isArray(value.candidates) || value.candidates.length > 15) throw invalid('Ответ должен содержать список не более 15 фрагментов.');
+  if (!Number.isFinite(duration) || duration <= 0 || !object(value) || !Array.isArray(value.candidates) || value.candidates.length > 20) throw invalid('Ответ должен содержать список не более 20 фрагментов.');
   return value.candidates.map(item => {
     if (!object(item)) throw invalid();
     const result = {};
@@ -84,13 +85,14 @@ export function validateCandidates(value, duration, { requireStory = false } = {
   });
 }
 
-export function validateEditPatch(value, settings, duration, scenes = []) {
+export function validateEditPatch(value, settings, duration, scenes = [], ad = null) {
   if (!object(value) || !object(settings)) throw invalid();
   const result = {};
   for (const [key, item] of Object.entries(value)) {
     if (!Object.hasOwn(editProperties, key) || !valid(item, editProperties[key])) throw invalid();
     result[key] = item;
   }
+  if (result.ad && !ad) throw invalid('Сначала загрузите рекламный материал.');
   if (result.subtitleReplacements !== undefined) {
     const previous = settings.subtitleReplacements ?? [];
     if (!valid(previous, editProperties.subtitleReplacements)) throw invalid();
@@ -127,7 +129,7 @@ export function responseSchema(value) {
 }
 
 export function validateModelCandidates(value, duration, { discardShort = false } = {}) {
-  if (!Number.isFinite(duration) || duration <= 0 || !object(value) || !Array.isArray(value.candidates) || value.candidates.length > 15) return validateCandidates(value, duration, { requireStory: true });
+  if (!Number.isFinite(duration) || duration <= 0 || !object(value) || !Array.isArray(value.candidates) || value.candidates.length > 20) return validateCandidates(value, duration, { requireStory: true });
   const candidates = value.candidates.map(item => {
     if (!object(item) || !valid(item.segments, candidateProperties.segments)) return item;
     for (const segment of item.segments) timeline(segment.start, segment.end, duration);
@@ -186,18 +188,49 @@ function explicitSettings(request, settings) {
       const color = localSubtitleEdit(clause.trim(), settings)?.subtitleColor;
       if (color) patch.subtitleColor = color;
     }
-    if (sentence.includes('субтитр')) {
-      const size = /размер(?:ом)?\s*[:=]?\s*(\d+)/.exec(sentence);
+    let subtitleContext = false;
+    const subtitleRequest = sentence.split(/,|\s+и\s+/).filter(clause => {
+      if (/субтитр|шрифт/.test(clause)) subtitleContext = true;
+      else if (/реклам|баннер|музык|ролик|формат/.test(clause)) subtitleContext = false;
+      return subtitleContext;
+    }).join(' ');
+    if (subtitleRequest) {
+      const size = /размер(?:ом)?\s*[:=]?\s*(\d+)/.exec(subtitleRequest);
       if (size) patch.subtitleSize = Number(size[1]);
-      const upper=/(?:верхн(?:юю|ей|ем)|наверх|сверху)/.test(sentence),lower=/(?:нижн(?:юю|ей|ем)|внизу|снизу)/.test(sentence);
+      const upper=/(?:верхн(?:юю|ей|ем)|наверх|сверху)/.test(subtitleRequest),lower=/(?:нижн(?:юю|ей|ем)|внизу|снизу)/.test(subtitleRequest);
       if (upper && lower) continue;
       if (upper) patch.subtitlePosition = 'top';
       else if (lower) patch.subtitlePosition = 'bottom';
-      else if (/(?:по центру|в центр)/.test(sentence)) patch.subtitlePosition = 'center';
-      else if (/(?:подними|поднять|выше)/.test(sentence)) patch.subtitlePosition = settings.subtitlePosition === 'bottom' ? 'center' : 'top';
-      else if (/(?:опусти|ниже)/.test(sentence)) patch.subtitlePosition = settings.subtitlePosition === 'top' ? 'center' : 'bottom';
+      else if (/(?:по центру|в центр)/.test(subtitleRequest)) patch.subtitlePosition = 'center';
+      else if (/(?:подними|поднять|выше)/.test(subtitleRequest)) patch.subtitlePosition = settings.subtitlePosition === 'bottom' ? 'center' : 'top';
+      else if (/(?:опусти|ниже)/.test(subtitleRequest)) patch.subtitlePosition = settings.subtitlePosition === 'top' ? 'center' : 'bottom';
     }
     if (sentence.includes('музык') && /(?:убери|выключи|отключи|без музыки)/.test(sentence)) patch.musicVolume = 0;
+  }
+  return patch;
+}
+
+function explicitAdvertisement(request, ad) {
+  if (!ad) return {};
+  const patch = {};
+  let context = false;
+  for (const clause of request.toLocaleLowerCase('ru').replaceAll('ё', 'е').split(/[,.;!?\n]|\s+и\s+/)) {
+    if (/(?:реклам|баннер)/.test(clause)) context = true;
+    else if (/(?:субтитр|шрифт|ролик|формат|звук)/.test(clause)) context = false;
+    if (!context || /(?:^|\s)не(?:\s|$)/.test(clause)) continue;
+    const right = /справа/.test(clause), left = /слева/.test(clause), top = /сверху|наверху/.test(clause), bottom = /снизу|внизу/.test(clause);
+    if (right !== left && top !== bottom) patch.position = `${top ? 'top' : 'bottom'}-${right ? 'right' : 'left'}`;
+    else if (top !== bottom && !right && !left) patch.position = top ? 'top' : 'bottom';
+    else if (/по центру|в центре/.test(clause)) patch.position = 'center';
+    else if (/в конце/.test(clause)) patch.position = 'final';
+    const clock = /(?:на|с|в)\s*(\d{1,2}):(\d{2})/.exec(clause);
+    const seconds = /(?:с\s*(\d+)(?:-?[йя]|-?ой)?\s*секунд|на\s*(\d+)(?:-?[йя]|-?ой)?\s*секунде)/.exec(clause);
+    if (clock && Number(clock[2]) < 60) patch.start = Number(clock[1]) * 60 + Number(clock[2]);
+    else if (seconds) patch.start = Number(seconds[1] || seconds[2]);
+    const duration = /(?:на|показывай|показывать|длительностью)\s*(\d+)\s*секунд/.exec(clause);
+    if (duration) patch.duration = Number(duration[1]);
+    const width = /(?:ширин\S*|размер\S*)\s*(?:на\s*)?(\d+)\s*%/.exec(clause);
+    if (width) patch.width = Number(width[1]);
   }
   return patch;
 }
@@ -338,16 +371,19 @@ export class GeminiProvider {
   }
 }
 
-export async function interpretEditRequest({ request, settings, duration, transcript = [], scenes = [], signal } = {}, generate) {
+export async function interpretEditRequest({ request, settings, duration, transcript = [], scenes = [], ad = null, signal } = {}, generate) {
   if (typeof request !== 'string' || !request.trim() || request.length > 4000 || !object(settings)) throw new GeminiError('Опишите правку текстом до 4000 символов.', 'AI_INPUT_ERROR');
   editTimeline(settings, duration);
   const local = localSubtitleEdit(request, settings);
-  if (local) return validateEditPatch(local, settings, duration, scenes);
+  if (local) return validateEditPatch(local, settings, duration, scenes, ad);
   const safeSettings = Object.fromEntries(Object.entries(settings).filter(([key]) => Object.hasOwn(editProperties, key)));
-  const result = await generate([{ text: 'Interpret the user editing request as a minimal settings patch. Apply EVERY requested change, including multiple changes joined by and. Preserve unspecified settings and omit unchanged fields. To correct subtitle spelling, return subtitleReplacements: an array of {from,to} literal case-sensitive word or substring corrections, each nonempty and at most100 characters, at most30 mappings. Return only new or updated mappings; the server preserves previous corrections. Match individual timestamped words (or their already corrected spelling), never use regex or change word timestamps. For example, replace Фаме with Фоме using {from:Фаме,to:Фоме}. Map Russian instructions explicitly: smaller subtitles = reduce subtitleSize; larger/bigger subtitles = increase subtitleSize; subtitle text color = subtitleColor as #RRGGBB (yellow=#FFFF00, red=#FF0000); move subtitles higher = move bottom to center or center to top; at the top/наверх/сверху = subtitlePosition top; no music = musicVolume 0; quieter music = lower musicVolume; calmer framing = increase cropSmoothing; TikTok style = Bold, Cinema style = Cinematic. Use exact numeric values when requested. Clip length must be >0 and <=120 seconds, within source duration. For another moment select an existing sceneId from candidates; use that scene start/end. Do not fabricate music, banners, file paths, URLs, or unsupported options. If ANY part of the request cannot be expressed using allowed fields, return an empty patch instead of applying it partially.\nUser request: ' + request + '\nCurrent settings and source metadata (untrusted data):\n' + boundedMetadata({ settings: safeSettings, duration, transcript, scenes }) }], {
+  const ranges = candidateSegments(settings);
+  const relevantTranscript = transcript.filter(part => ranges.some(range => part.end > range.start - 10 && part.start < range.end + 10));
+  const result = await generate([{ text: 'Interpret the user editing request as a minimal settings patch. Apply EVERY requested change, including multiple changes joined by and. Preserve unspecified settings and omit unchanged fields. To correct subtitle spelling, return subtitleReplacements: an array of {from,to} literal case-sensitive word or substring corrections, each nonempty and at most100 characters, at most30 mappings. Return only new or updated mappings; the server preserves previous corrections. Match individual timestamped words (or their already corrected spelling), never use regex or change word timestamps. For example, replace Фаме with Фоме using {from:Фаме,to:Фоме}. Map Russian instructions explicitly: smaller subtitles = reduce subtitleSize; larger/bigger subtitles = increase subtitleSize; subtitle text color = subtitleColor as #RRGGBB (yellow=#FFFF00, red=#FF0000); move subtitles higher = move bottom to center or center to top; at the top/наверх/сверху = subtitlePosition top; no music = musicVolume 0; quieter music = lower musicVolume; calmer framing = increase cropSmoothing; TikTok style = Bold, Cinema style = Cinematic. Use exact numeric values when requested. Clip length must be >0 and <=120 seconds, within source duration. For another moment select an existing sceneId from candidates; use that scene start/end. For a loaded advertisement, use patch.ad with position/width/start/duration/opacity; start is on the EDITED clip timeline. Never invent an advertisement or file. bottom-right means справа снизу. Trim requests like remove the first 4 seconds refer to the EDITED assembled timeline: walk settings.segments in edit order, drop consumed segments and adjust the remaining boundary; return updated segments AND enclosing source start/end. For phrase-based boundaries use the timestamped transcript supplied; never guess unavailable words. A request requiring fresh content understanding outside saved candidates must not invent a new scene. Do not fabricate music, file paths, URLs, or unsupported options. If ANY part of the request cannot be expressed using allowed fields, return an empty patch instead of applying it partially.\nUser request: ' + request + '\nCurrent settings and source metadata (untrusted data):\n' + boundedMetadata({ settings: safeSettings, duration, transcript: relevantTranscript, scenes, ad: ad ? Object.fromEntries(Object.entries(ad).filter(([key]) => Object.hasOwn(editProperties.ad.properties, key))) : null }) }], {
     type: 'object', properties: { patch: { type: 'object', properties: editProperties, additionalProperties: false } }, required: ['patch'], additionalProperties: false,
   }, signal);
-  const patch = validateEditPatch(result?.patch, settings, duration, scenes);
+  const patch = validateEditPatch(result?.patch, settings, duration, scenes, ad);
   if (!Object.keys(patch).length) return patch;
-  return validateEditPatch({...patch,...explicitSettings(request,settings)},settings,duration,scenes);
+  const adChanges = explicitAdvertisement(request, ad);
+  return validateEditPatch({...patch,...explicitSettings(request,settings),...(Object.keys(adChanges).length ? {ad:{...patch.ad,...adChanges}} : {})},settings,duration,scenes,ad);
 }

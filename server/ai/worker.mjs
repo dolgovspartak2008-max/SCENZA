@@ -1,19 +1,23 @@
-import { promises as fs } from 'node:fs';
+import { promises as fs, createReadStream } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import { createStore } from './store.mjs';
 import { createStorage } from './storage.mjs';
-import { OpenRouterProvider } from './openai.mjs';
-import { analyzeLongVideo, analysisWindowSeconds } from './analysis.mjs';
-import { ff, run, inspect, normalizeSettings, timelineDuration, render, fail } from './render.mjs';
+import { OpenRouterProvider, PRIMARY_VIDEO_MODEL, FAST_EDIT_MODEL, ANALYSIS_VERSION } from './openai.mjs';
+import { analyzeLongVideo } from './analysis.mjs';
+import { ff, run, inspect, normalizeSettings, normalizeAd, timelineDuration, render, fail } from './render.mjs';
 
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || path.join(workspace,'.scena'), env = process.env, provider, python } = {}) {
   const root=path.join(dataDir,'ai'), cache=path.join(root,'cache'); await fs.mkdir(cache,{recursive:true});
   let usageJob, usageWarning = false;
-  const store=await createStore({dataDir:root,env}), storage=createStorage({dataDir:root,env}), ai=provider||new OpenRouterProvider({apiKey:env.OPENROUTER_API_KEY || '',model:env.OPENROUTER_MODEL || 'google/gemini-2.5-flash-lite',onUsage:async record=>{await store.recordAiUsage({...record,ownerId:usageJob.ownerId,projectId:usageJob.projectId,jobId:usageJob.id});usageWarning=false;},onUsageError:()=>{if(!usageWarning)console.warn('SCENZA: учёт расходов AI временно недоступен. Обработка продолжается; проверьте миграцию usage и соединение с БД.');usageWarning=true;}});
+  const store=await createStore({dataDir:root,env}), storage=createStorage({dataDir:root,env});
+  const usageError=()=>{if(!usageWarning)console.warn('SCENZA: учёт расходов AI временно недоступен. Обработка продолжается; проверьте миграцию usage и соединение с БД.');usageWarning=true;};
+  const recordUsage=async record=>{await store.recordAiUsage({sourceSeconds:usageJob.sourceSeconds,...record,ownerId:usageJob.ownerId,projectId:usageJob.projectId,jobId:usageJob.id,operation:usageJob.type});usageWarning=false;};
+  const ai=provider||new OpenRouterProvider({apiKey:env.OPENROUTER_API_KEY || '',model:env.PRIMARY_VIDEO_MODEL || PRIMARY_VIDEO_MODEL,editModel:env.FAST_EDIT_MODEL || FAST_EDIT_MODEL,onUsage:recordUsage,onUsageError:usageError});
   const workerId=randomUUID();
   python ||= env.SCENZA_PYTHON || path.join(workspace,'.scena','venv',process.platform==='win32'?'Scripts/python.exe':'bin/python');
   let stopping=false;
@@ -21,6 +25,7 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
     usageJob = job;
     const project=await store.getProject(job.ownerId,job.projectId);
     if (!project) { await store.finishJob(job.id,workerId,{error:'Проект не найден.'}); return; }
+    usageJob.sourceSeconds=project.duration;
     const folder=path.resolve(cache,`${job.id}-${workerId}`);
     if (!/^[a-f0-9-]{36}$/i.test(job.id) || !folder.startsWith(path.resolve(cache)+path.sep)) throw fail('Некорректная задача.',400);
     await fs.mkdir(folder,{recursive:true});
@@ -34,6 +39,8 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
     const put=async(id,file,mime,download=false)=>{if(leaseError)throw leaseError;await heartbeat();const key=`${project.id}/${id}${path.extname(file)}`;await storage.put(key,file);project.files[id]={key,mime,...(download?{download:true}:{})};return id;};
     const get=async(id)=>{if(!project.files[id])throw fail('Исходный файл не найден.',404);const target=path.join(folder,`${id}${path.extname(project.files[id].key)}`);await storage.get(project.files[id].key,target);return target;};
     const onProgress=value=>{progress=value;};
+    const sourceIdentity=()=>fingerprint([project.sourceFingerprint,project.files.original?.key,project.upload?.size,project.duration]);
+    const sourceUsage=async()=>{if(project.analyzedAt)await recordUsage({id:`source-${fingerprint([job.ownerId,project.id,sourceIdentity()])}`,kind:'source',sourceSeconds:project.duration,createdAt:project.analyzedAt}).catch(usageError);};
     const renderCandidates=async()=>{
         const original=await get('original');
         for(let i=0;i<project.candidates.length;i++) {
@@ -41,7 +48,8 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
           if(!candidate.ready || !project.files[candidate.id] || candidate.adFileId !== (project.ad?.fileId||null)) {
             const output=path.join(folder,`${candidate.id}.mp4`);
             const settings=normalizeSettings({start:candidate.start,end:candidate.end,...(candidate.segments?{segments:candidate.segments}:{}),keywords:candidate.keywords||[],subtitleStyle:'Dynamic'},project.duration);
-            const ad=project.ad?{...project.ad,file:await get(project.ad.fileId)}:null;
+            const adDuration=Math.min(project.ad?.duration||5,timelineDuration(settings));
+            const ad=project.ad?{...normalizeAd({...project.ad,start:(timelineDuration(settings)-adDuration)/2,duration:adDuration},timelineDuration(settings)),file:await get(project.ad.fileId)}:null;
             await render({input:original,output,settings,analysis:project.analysis,ad,preview:false,onProgress,signal:operation.signal});
             await put(candidate.id,output,'video/mp4',true);
             candidate.adFileId=project.ad?.fileId||null;candidate.ready=true;candidate.settings=settings;candidate.duration=timelineDuration(settings);
@@ -51,6 +59,11 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
         }
     };
     try {
+      const completedVersion=[...(project.versions||[]),...(project.exports||[])].find(version=>version.jobId===job.id&&project.files[version.id]);
+      if(completedVersion||(project.adPreviewJobId===job.id&&project.files[project.adPreview])) {
+        project.status=job.type==='export'?'COMPLETED':job.payload.adPreview?'ADDING_AD':'AWAITING_APPROVAL';
+        project.error=null;await save();await store.finishJob(job.id,workerId,{result:{projectId:project.id}});return;
+      }
       if(job.type==='preprocess') {
         await stage('PREPROCESSING','Подготовка видео');
         const input=path.join(root,'uploads',`${project.id}.original`);
@@ -61,6 +74,9 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
         } else if (project.files.original) await storage.get(project.files.original.key,input);
         const metadata=await inspect(input);
         Object.assign(project,metadata);
+        const sourceHash=createHash('sha256');for await(const chunk of createReadStream(input))sourceHash.update(chunk);
+        const previousFingerprint=project.sourceFingerprint;project.sourceFingerprint=sourceHash.digest('hex');
+        if(previousFingerprint&&previousFingerprint!==project.sourceFingerprint){project.analysis=null;project.analysisCache=null;project.analysisResult=null;project.analysisWindows=[];project.candidates=[];project.files.proxy=null;}
         if(!project.files.original)await put('original',input,'application/octet-stream');
         if(!project.files.proxy) {
           const proxy=path.join(folder,'proxy.mp4');
@@ -73,37 +89,42 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
         await fs.rm(input,{force:true});
       }
       if(job.type==='analyze') {
-        if(!project.candidates.length && !ai.configured && !provider)throw fail('AI-анализ пока не подключён. Администратору нужно настроить ключ сервиса.',503);
+        const cacheIdentity={source:sourceIdentity(),version:ANALYSIS_VERSION,model:ai.model||env.PRIMARY_VIDEO_MODEL||PRIMARY_VIDEO_MODEL};
+        if(project.analysisCache&&fingerprint(project.analysisCache)!==fingerprint(cacheIdentity)) {
+          if(project.analysisCache.source!==cacheIdentity.source)project.analysis=null;
+          project.analysisResult=null;project.analysisWindows=[];project.candidates=[];project.analyzedAt=null;
+        }
+        project.analysisCache=cacheIdentity;
+        if(!project.analysisResult&&project.candidates.length)project.analysisResult={candidates:project.candidates,model:project.analysisModel};
+        if(!project.analysisResult && !ai.configured && !provider)throw fail('AI-анализ пока не подключён. Администратору нужно настроить ключ сервиса.',503);
         if(!project.analysis) {
           await stage('TRANSCRIBING','Распознавание речи и подготовка сцен');
           const source=await get('original'), output=path.join(folder,'analysis.json');
           await run(python,[path.join(workspace,'server/ai/media.py'),project.hasAudio?'analyze':'inspect','--input',source,'--output',output],{timeout:12*3600000,signal:operation.signal});
           project.analysis=JSON.parse(await fs.readFile(output,'utf8')); project.analysis.hasAudio=project.hasAudio; project.analysis.segments||=[]; await save();
         }
-        if(!project.candidates.length) {
+        if(!project.analysisResult) {
           await stage('ANALYZING','Анализ содержания и выбор законченных историй');
           const proxy=await get('proxy');
-          let result;
-          if(project.duration<=analysisWindowSeconds) {
-            result=await ai.analyzeVideo({filePath:proxy,duration:project.duration,transcript:project.analysis.segments,scenes:project.analysis.scenes,signal:operation.signal});
-          } else {
             project.analysisWindows||=[];
             const analyzeWindow=async(window,metadata,method,context)=>{
               const file=path.join(folder,`window-${window.start}.mp4`),duration=window.end-window.start;
+              if(window.start===0&&duration===project.duration)return ai[method]({filePath:proxy,duration,...metadata,context,signal:operation.signal});
               if(!await fs.stat(file).catch(()=>null)) await processVideo(['-ss',String(window.start),'-protocol_whitelist','file,pipe','-i',proxy,'-t',String(duration),'-map','0:v:0','-map','0:a:0?','-vf','setpts=PTS-STARTPTS',...(project.hasAudio?['-af','asetpts=PTS-STARTPTS']:[]),'-c:v','libx264','-preset','veryfast','-crf','29','-pix_fmt','yuv420p','-c:a','aac','-b:a','64k','-movflags','+faststart',file]);
               return ai[method]({filePath:file,duration,...metadata,context,signal:operation.signal});
             };
-            result=await analyzeLongVideo({
+            const result=await analyzeLongVideo({
               duration:project.duration,analysis:project.analysis,cache:project.analysisWindows,persist:save,
               onProgress:async({phase,completed,total})=>{currentStage=`${phase==='overview'?'Обзор всего видео':'Выбор историй'}: ${completed} из ${total} частей`;progress=Math.round(completed/total*100);await heartbeat();},
               ...(ai.summarizeVideo ? {summarize:(window,metadata)=>analyzeWindow(window,metadata,'summarizeVideo')} : {}),
               ...(ai.selectStories ? {select:input=>ai.selectStories({...input,signal:operation.signal})} : {}),
               analyze:(window,metadata,context)=>analyzeWindow(window,metadata,'analyzeVideo',context),
             });
-          }
           project.candidates=result.candidates.sort((a,b)=>b.score-a.score).map(item=>({...item,id:randomUUID()}));project.analysisModel=result.model;
+          project.analysisResult=result;
           project.analyzedAt=new Date().toISOString(); await save();
         }
+        await sourceUsage();
         if(!project.candidates.length)throw fail('В этом видео не найдено подходящих моментов. Попробуйте другой материал.');
         await stage('ANALYZING','Монтаж готовых вертикальных роликов');
         await renderCandidates();
@@ -112,11 +133,15 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
       if(job.type==='asset') {
         await stage('RENDERING','Подготовка загруженного файла');
         const input=path.join(root,'uploads',path.basename(job.payload.localName)),isAd=job.payload.kind==='ad';
-        const output=path.join(folder,`${job.payload.assetId}.${isAd?'png':'m4a'}`);
-        await processVideo(['-protocol_whitelist','file,pipe','-format_whitelist',isAd?'image2,png_pipe,jpeg_pipe,webp_pipe':'mp3,wav,mov,ogg','-i',input,...(isAd?['-frames:v','1','-vf',"scale='min(1920,iw)':-2"]:['-vn','-t','600','-c:a','aac','-b:a','192k']),output]);
-        await put(job.payload.assetId,output,isAd?'image/png':'audio/mp4');
+        const videoAd=isAd&&job.payload.adKind==='video';
+        const adMetadata=videoAd?await inspect(input):null;
+        if(videoAd&&adMetadata.duration>30)throw fail('Рекламное видео должно быть не длиннее 30 секунд.',400);
+        const output=path.join(folder,`${job.payload.assetId}.${videoAd?'mp4':isAd?'png':'m4a'}`);
+        await processVideo(['-protocol_whitelist','file,pipe','-format_whitelist',videoAd?'mov,matroska,webm':isAd?'image2,png_pipe,jpeg_pipe,webp_pipe':'mp3,wav,mov,ogg','-i',input,...(videoAd?['-map','0:v:0','-an','-vf',"scale='min(1280,iw)':-2",'-c:v','libx264','-preset','veryfast','-crf','23','-pix_fmt','yuv420p','-movflags','+faststart']:isAd?['-frames:v','1','-vf',"scale='min(1920,iw)':-2"]:['-vn','-t','600','-c:a','aac','-b:a','192k']),output]);
+        await put(job.payload.assetId,output,videoAd?'video/mp4':isAd?'image/png':'audio/mp4');
         if(isAd) {
-          project.ad={fileId:job.payload.assetId,position:'auto',width:45,start:0,duration:Math.min(5,timelineDuration(project.settings||project.candidates[0].settings)),opacity:1};project.adPreview=null;
+          const clipSettings=project.settings||project.candidates[0]?.settings||normalizeSettings(project.candidates[0]||{},project.duration);
+          project.ad={...normalizeAd({},timelineDuration(clipSettings)),fileId:job.payload.assetId,kind:videoAd?'video':'image',...(videoAd?{mediaDuration:adMetadata.duration}:{})};project.adPreview=null;
           await save();currentStage='Добавляем баннер в готовые ролики';await renderCandidates();
           project.status=project.currentVersion?'ADDING_AD':'READY';
         } else {project.music.push({id:job.payload.assetId,name:job.payload.name,mood:'user',bpm:null,genre:'user',energy:null,tags:['Загружен пользователем']});project.status=job.payload.previousStatus;}
@@ -125,24 +150,42 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
       if(['preview','revise','export'].includes(job.type)) {
         await stage(job.type==='export'?'EXPORTING':'RENDERING',job.type==='revise'?'Применяем правки':'Монтируем ролик');
         let settings=normalizeSettings(job.payload.settings||project.settings,project.duration);
+        let projectAd=project.ad,adEdited=false;
         if(job.type==='revise') {
-          const patch=await ai.interpretEditRequest({request:job.payload.request,settings,duration:project.duration,transcript:project.analysis.segments,scenes:project.candidates,signal:operation.signal});
-          if (!Object.keys(patch).length) throw fail('Не удалось понять правку. Укажите, что изменить: границы ролика, субтитры, музыку или кадрирование.');
+          const editIdentity=fingerprint([sourceIdentity(),job.payload.request,settings,project.ad]);
+          project.editCache||={};
+          let cached=project.editCache[job.id];
+          await recordUsage({id:`edit-${job.id}`,kind:'edit'}).catch(usageError);
+          if(!cached||cached.key!==editIdentity) {
+            const patch=await ai.interpretEditRequest({request:job.payload.request,settings,ad:project.ad,duration:project.duration,transcript:project.analysis?.segments||[],scenes:project.candidates,signal:operation.signal});
+            cached={key:editIdentity,patch,createdAt:new Date().toISOString()};project.editCache[job.id]=cached;await save();
+          }
+          const {ad:adPatch,...patch}=cached.patch;
+          if (!Object.keys(patch).length&&!adPatch) throw fail('Не удалось понять правку. Укажите, что изменить: границы ролика, субтитры, музыку или кадрирование.');
           settings=normalizeSettings({...settings,...(('start' in patch||'end' in patch)&&!('segments' in patch)?{segments:undefined}:{}),...patch},project.duration);
+          if(adPatch) {
+            if(!project.ad)throw fail('Сначала загрузите рекламный файл.',400);
+            projectAd=normalizeAd({...project.ad,...adPatch},timelineDuration(settings));adEdited=true;
+          }
+        }
+        const clipDuration=timelineDuration(settings);
+        if(projectAd&&!adEdited&&(projectAd.duration>clipDuration||projectAd.start+projectAd.duration>clipDuration)) {
+          const duration=Math.min(projectAd.duration,clipDuration);
+          projectAd={...projectAd,start:(clipDuration-duration)/2,duration};
         }
         const original=await get('original'),versionId=randomUUID(),output=path.join(folder,`${versionId}.mp4`);
-        const ad=(job.type==='export'||job.payload.adPreview)&&project.ad?{...project.ad,file:await get(project.ad.fileId)}:null;
+        const ad=projectAd?{...normalizeAd(projectAd,clipDuration),file:await get(projectAd.fileId)}:null;
         const music=settings.musicId?await get(settings.musicId):null;
         await render({input:original,output,settings,analysis:project.analysis,ad,music,preview:job.type!=='export',onProgress,signal:operation.signal});
         await put(versionId,output,'video/mp4',job.type==='export');
-        project.settings=settings;
+        project.settings=settings;project.ad=projectAd;
         if(job.type==='export'){
           project.exports||=project.finalFile?[{id:project.finalFile}]:[];
           project.finalFile=versionId;project.status='COMPLETED';
-          project.exports.push({id:versionId,createdAt:new Date().toISOString(),format:settings.format,duration:timelineDuration(settings)});
+          project.exports.push({id:versionId,jobId:job.id,createdAt:new Date().toISOString(),format:settings.format,duration:timelineDuration(settings)});
         }
-        else if(job.payload.adPreview){project.adPreview=versionId;project.status='ADDING_AD';}
-        else {project.versions.push({id:versionId,number:project.versions.length+1,settings,createdAt:new Date().toISOString(),request:job.payload.request||''});project.currentVersion=versionId;project.adPreview=null;project.status='AWAITING_APPROVAL';}
+        else if(job.payload.adPreview){project.adPreview=versionId;project.adPreviewJobId=job.id;project.status='ADDING_AD';}
+        else {project.versions.push({id:versionId,jobId:job.id,number:project.versions.length+1,settings,ad:projectAd?structuredClone(projectAd):null,createdAt:new Date().toISOString(),request:job.payload.request||''});project.currentVersion=versionId;project.adPreview=null;project.status='AWAITING_APPROVAL';}
         await save();
       }
       await store.finishJob(job.id,workerId,{result:{projectId:project.id}});

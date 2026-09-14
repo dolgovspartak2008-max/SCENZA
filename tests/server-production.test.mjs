@@ -73,11 +73,12 @@ test('optional bots use the production origin and explicit website and registrat
   }
 });
 
-test('production uses one client bot for login and administration, including memory-only credentials', () => {
+test('production connects the separate admin bot while retaining single-bot fallback', () => {
   const config = readProductionConfig(env, { ...bots, adminToken: undefined });
   assert.equal(config.botOptions.clientToken, bots.clientToken);
   assert.equal(config.botOptions.adminToken, undefined);
-  assert.equal(readProductionConfig(env, bots).botOptions.adminToken, undefined);
+  assert.equal(readProductionConfig(env, bots).botOptions.adminToken, bots.adminToken);
+  assert.throws(() => readProductionConfig(env, { ...bots, adminToken: 'invalid' }), /Telegram/);
   const memory = readProductionConfig({ ...env, SCENA_BOT_TOKEN: bots.clientToken }, { ownerTelegramIds: [123456] });
   assert.equal(memory.botOptions.clientToken, bots.clientToken);
 });

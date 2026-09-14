@@ -56,7 +56,7 @@ try {
     telegramBotToken: config.clientToken,
     allowedOrigins: origins,
   } });
-  bots = createTelegramBots({ clientToken: config.clientToken, service: backend.auth.bots, siteUrl, registrationEnabled: config.registrationEnabled === true, stateFile: path.join(dataDir, 'telegram-offsets.json') });
+  bots = createTelegramBots({ clientToken: config.clientToken, adminToken: config.adminToken, service: backend.auth.bots, siteUrl, registrationEnabled: config.registrationEnabled === true, stateFile: path.join(dataDir, 'telegram-offsets.json') });
   stage = 'запуск локального API на порту 5184';
   await new Promise((resolve, reject) => { backend.once('error', reject); backend.listen(5184, '127.0.0.1', resolve); });
   frontend = await createVite({ root: workspace, server: { host: '127.0.0.1', port: 5183, strictPort: true, proxy: { '/api': 'http://127.0.0.1:5184', '/media': 'http://127.0.0.1:5184', '/downloads': 'http://127.0.0.1:5184' } } });
@@ -78,7 +78,7 @@ try {
   await writeHealth();
   healthTimer = setInterval(() => { void writeHealth().catch(() => console.error('SCENZA: не удалось сохранить статус сервиса.')); }, 10000);
   healthTimer.unref();
-  console.log('SCENZA: единый бот запущен. Панель владельца: /admin. Локальный сайт: http://127.0.0.1:5183.');
+  console.log(`SCENZA: ${config.adminToken && config.adminToken !== config.clientToken ? 'клиентский и административный боты запущены' : 'единый бот запущен, панель владельца: /admin'}. Локальный сайт: http://127.0.0.1:5183.`);
   process.on('SIGINT', () => void stop());
   process.on('SIGTERM', () => void stop());
 } catch (error) {

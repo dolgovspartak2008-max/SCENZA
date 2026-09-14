@@ -1,15 +1,16 @@
 import { promises as fs, createReadStream, createWriteStream } from 'node:fs';
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, createHash } from 'node:crypto';
 import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
 import { createStore } from './store.mjs';
 import { createStorage } from './storage.mjs';
-import { fail, normalizeSettings, timelineDuration } from './render.mjs';
+import { fail, normalizeSettings, normalizeAd, timelineDuration } from './render.mjs';
+import { PRIMARY_VIDEO_MODEL, ANALYSIS_VERSION } from './openai.mjs';
 
 const MAX_FILE = 20 * 1024 ** 3, CHUNK = 8 * 1024 ** 2;
-const projectView = ({analysis,analysisWindows,...project}) => project;
-const readyClips = project => [...(project.exports ?? (project.finalFile ? [{ id: project.finalFile }] : [])), ...(project.candidates || []).filter(candidate => candidate.ready).map(candidate => ({...candidate,format:'9:16'}))];
+const projectView = ({analysis,analysisWindows,analysisResult,analysisCache,sourceFingerprint,editCache,adPreviewJobId,...project}) => project;
+const readyClips = project => [...(project.exports ?? (project.finalFile ? [{ id: project.finalFile }] : [])), ...(project.candidates || []).filter(candidate => candidate.ready).map(candidate => ({...candidate,format:candidate.settings?.format||'9:16'}))];
 const busyStates = ['PREPROCESSING','TRANSCRIBING','ANALYZING','RENDERING','EXPORTING'];
 async function json(request) {
   let text = '';
@@ -86,6 +87,10 @@ export async function createVideoApi({ dataDir, env = process.env }) {
       const limit = limits.get(key) || { count: 0, until: now+60000 };
       if (limit.until < now) { limit.count = 0; limit.until = now+60000; }
       limit.count++; limits.set(key,limit); if (limit.count > 600) throw fail('Слишком много запросов. Повторите через минуту.',429);
+      if (route === '/api/video/usage' && method === 'GET') {
+        const { month, sourceMinutes, sourceCount, editRequests } = await store.ownerMonthlyUsage(ownerId);
+        send(response, { month, sourceMinutes, sourceCount, editRequests }); return true;
+      }
       if (route === '/api/video/config' && method === 'GET') { send(response, { aiReady: !!env.OPENROUTER_API_KEY?.trim(), maxFileSize: MAX_FILE, chunkSize: CHUNK }); return true; }
       if (route === '/api/video/projects' && method === 'GET') { send(response, { projects: (await store.listProjects(ownerId)).map(projectView) }); return true; }
       if (route === '/api/video/import' && method === 'POST') {
@@ -138,7 +143,9 @@ export async function createVideoApi({ dataDir, env = process.env }) {
         send(response,{job:await queue(ownerId,project,'preprocess')},202); return true;
       }
       if (method === 'POST' && action === 'analyze') {
-        if (project.candidates.length && project.candidates.every(candidate=>candidate.ready&&project.files[candidate.id])) { send(response,{project:projectView(project),cached:true}); return true; }
+        const source=createHash('sha256').update(JSON.stringify([project.sourceFingerprint,project.files.original?.key,project.upload?.size,project.duration])).digest('hex');
+        const currentCache=!project.analysisCache||(project.analysisCache.source===source&&project.analysisCache.version===ANALYSIS_VERSION&&project.analysisCache.model===(env.PRIMARY_VIDEO_MODEL||PRIMARY_VIDEO_MODEL));
+        if (currentCache && project.candidates.length && project.candidates.every(candidate=>candidate.ready&&project.files[candidate.id])) { send(response,{project:projectView(project),cached:true}); return true; }
         if (!project.candidates.length && !env.OPENROUTER_API_KEY?.trim()) throw fail('AI-анализ пока не подключён. Администратору нужно настроить ключ сервиса.',503);
         if (!project.files.original) throw fail('Сначала загрузите и подготовьте видео.',409);
         send(response,{job:await queue(ownerId,project,'analyze')},202); return true;
@@ -167,23 +174,25 @@ export async function createVideoApi({ dataDir, env = process.env }) {
         if (busyStates.includes(project.status)) throw fail('Дождитесь завершения обработки.',409);
         const body=await json(request), version=project.versions.find(item=>item.id===body.versionId);
         if (!version) throw fail('Версия не найдена.',404);
+        if (Object.hasOwn(version,'ad')) project.ad=version.ad;
         project.settings=version.settings; project.currentVersion=version.id; project.adPreview=null; project.status='AWAITING_APPROVAL'; project.error=null; await store.saveProject(ownerId,project); send(response,{project:projectView(project)}); return true;
       }
       if (method === 'POST' && ['advertisement','music'].includes(action)) {
         if (busyStates.includes(project.status)) throw fail('Дождитесь завершения обработки.',409);
         const name=url.searchParams.get('filename')||'', isAd=action==='advertisement';
         if (isAd && !(project.status==='READY'&&project.candidates.some(candidate=>candidate.ready)) && (!project.settings || !['APPROVED','ADDING_AD','COMPLETED'].includes(project.status))) throw fail('Сначала подтвердите ролик.',409);
-        if (!(isAd ? /\.(png|jpg|jpeg|webp)$/i : /\.(mp3|wav|m4a|ogg)$/i).test(name)) throw fail(isAd?'Загрузите PNG, JPG или WEBP.':'Загрузите MP3, WAV, M4A или OGG.');
+        const videoAd=isAd&&/\.(mp4|mov|webm|m4v)$/i.test(name);
+        if (!(isAd ? /\.(png|jpg|jpeg|webp|mp4|mov|webm|m4v)$/i : /\.(mp3|wav|m4a|ogg)$/i).test(name)) throw fail(isAd?'Загрузите PNG, JPG, WEBP или видео MP4, MOV, WebM до 30 секунд.':'Загрузите MP3, WAV, M4A или OGG.');
         const assetId=randomUUID(), local=path.join(root,'uploads',`${assetId}${path.extname(name).toLowerCase()}`);
-        await writeUpload(request,local,isAd?20*1024**2:100*1024**2);
+        await writeUpload(request,local,isAd&&!videoAd?20*1024**2:100*1024**2);
         // Decode in the worker before making any uploaded media available.
-        send(response,{job:await queue(ownerId,project,'asset',{assetId,localName:path.basename(local),name:path.basename(name).slice(0,120),kind:isAd?'ad':'music',previousStatus:project.status})},202); return true;
+        send(response,{job:await queue(ownerId,project,'asset',{assetId,localName:path.basename(local),name:path.basename(name).slice(0,120),kind:isAd?'ad':'music',...(isAd?{adKind:videoAd?'video':'image'}:{}),previousStatus:project.status})},202); return true;
       }
       if (method === 'PUT' && action === 'advertisement') {
-        if (!project.ad || !['APPROVED','ADDING_AD','COMPLETED'].includes(project.status)) throw fail('Подтвердите ролик и загрузите баннер.',409);
+        if (!project.ad || !['APPROVED','ADDING_AD','COMPLETED'].includes(project.status)) throw fail('Подтвердите ролик и загрузите рекламу.',409);
         const body=await json(request), duration=timelineDuration(project.settings);
-        if (!['auto','top','bottom','center','final'].includes(body.position)||!['width','start','duration','opacity'].every(k=>Number.isFinite(body[k]))||body.width<10||body.width>80||body.start<0||body.start>=duration||body.duration<=0||body.duration>duration||body.opacity<0||body.opacity>1) throw fail('Проверьте размер, время и прозрачность рекламы.');
-        project.ad={...project.ad,...Object.fromEntries(['position','width','start','duration','opacity'].map(k=>[k,body[k]]))}; project.adPreview=null; project.status='ADDING_AD'; await store.saveProject(ownerId,project); send(response,{project:projectView(project)}); return true;
+        const options=normalizeAd(Object.fromEntries(['position','width','start','duration','opacity'].map(key=>[key,body[key]])),duration);
+        project.ad={...project.ad,...options}; project.adPreview=null; project.status='ADDING_AD'; await store.saveProject(ownerId,project); send(response,{project:projectView(project)}); return true;
       }
       throw fail('Неизвестный запрос.',404);
     },

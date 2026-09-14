@@ -130,7 +130,7 @@ test('untrusted candidate JSON rejects unsafe timestamps, impossible durations a
   for (const patch of [{ start: -1 }, { end: 121, start: 0 }, { start: '10' }, { score: Infinity }, { duration: 31 }, { recommended_format: '4:3' }]) {
     assert.throws(() => provider.validateCandidates({ candidates: [candidate(patch)] }, 120));
   }
-  assert.throws(() => provider.validateCandidates({ candidates: Array(16).fill(candidate()) }, 120));
+  assert.throws(() => provider.validateCandidates({ candidates: Array(21).fill(candidate()) }, 120));
   assert.deepEqual(provider.validateCandidates({ candidates: [] }, 120), []);
   const sanitized = provider.validateCandidates({ candidates: [candidate({ command: 'evil' })] }, 120);
   assert.equal(sanitized[0].command, undefined);

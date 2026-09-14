@@ -69,6 +69,7 @@ export async function createAdminService({ auth, dataDir, getVideoApi, now = Dat
     return { total: rows.length, today: since(start.getTime()), week: since(now() - 7 * DAY), month: since(now() - 30 * DAY) };
   };
   const usageSummary = ({ usage = [], jobs = [], usageUnavailable = false }) => {
+    usage = usage.filter(row => !row.kind || row.kind === 'ai');
     const start = new Date(now()); start.setUTCHours(0, 0, 0, 0);
     const slice = since => usage.filter(row => Date.parse(row.createdAt) >= since && Date.parse(row.createdAt) <= now());
     const period = rows => ({ requests: rows.length, tokens: sumKnown(rows, 'totalTokens'), cost: sumKnown(rows, 'cost') });

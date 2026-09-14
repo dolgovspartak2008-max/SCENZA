@@ -50,13 +50,14 @@ test('a failed cache save stops processing and does not mark a window as durably
   assert.equal(cache.length, 0);
 });
 
-test('candidate merge restores global timestamps, rejects invalid ranges, deduplicates overlap and keeps the best fifteen', async () => {
+test('candidate merge restores global timestamps, rejects invalid ranges and deduplicates a twenty-candidate shortlist', async () => {
   const { mergeWindowCandidates } = await helpers();
   const merged = mergeWindowCandidates([
     { start: 0, end: 1800, candidates: [candidate(1690, 1750, 70), ...Array.from({ length: 15 }, (_, i) => candidate(i * 100, i * 100 + 20, i + 1))].slice(0, 15) },
     { start: 1680, end: 3480, candidates: [candidate(12, 72, 99), candidate(500, 520, 95), candidate(800, 820, 94)] },
   ]);
-  assert.equal(merged.length, 15);
+  assert.equal(merged.length, 17);
+  assert.equal(mergeWindowCandidates(Array.from({ length: 3 }, (_, window) => ({ start: window * 1680, end: window * 1680 + 1800, candidates: Array.from({ length: 15 }, (_, i) => candidate(i * 100, i * 100 + 20)) }))).length, 20);
   assert.deepEqual([merged[0].start, merged[0].end], [1692, 1752]);
   assert.equal(merged[0].score, 99);
   assert.equal(merged.some(item => item.start === 1690), false);
