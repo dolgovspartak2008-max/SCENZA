@@ -26,8 +26,15 @@ async function stop() {
 
 try {
   const config = JSON.parse(await fs.readFile(path.join(workspace, '.scena', 'bot-secrets.json'), 'utf8'));
-  if (![config.clientToken, config.adminToken].every(value => typeof value === 'string' && /^\d{5,20}:[A-Za-z0-9_-]{20,100}$/.test(value))) throw new Error('Проверьте конфигурацию токенов.');
-  if (config.clientToken === config.adminToken) throw new Error('Для клиентского и административного бота нужны разные токены.');
+  if (process.argv.includes('--token-stdin')) {
+    let input = '';
+    for await (const chunk of process.stdin) {
+      input += chunk;
+      if (input.length > 200) throw new Error('Некорректный токен.');
+    }
+    config.clientToken = input.trim();
+  }
+  if (typeof config.clientToken !== 'string' || !/^\d{5,20}:[A-Za-z0-9_-]{20,100}$/.test(config.clientToken)) throw new Error('Проверьте токен SCENZA_BOT.');
   if (!Array.isArray(config.ownerTelegramIds) || !config.ownerTelegramIds.length || config.ownerTelegramIds.some(id => !/^\d{1,16}$/.test(String(id)))) throw new Error('Укажите личный числовой Telegram ID владельца.');
   let siteUrl = '';
   if (config.siteUrl) {
@@ -45,9 +52,11 @@ try {
   backend = await createServer({ dataDir, seed: false, allowLocalStudio: false, authOptions: {
     ownerTelegramIds: config.ownerTelegramIds.map(String), botRegistrationEnabled: config.registrationEnabled === true,
     legalReady: config.legalReady === true, telegramClientId: siteUrl && config.websiteLoginEnabled === true ? config.clientToken.split(':')[0] : '',
+    telegramBotUsername: 'SCENZA_BOT',
+    telegramBotToken: config.clientToken,
     allowedOrigins: origins,
   } });
-  bots = createTelegramBots({ clientToken: config.clientToken, adminToken: config.adminToken, service: backend.auth.bots, siteUrl, registrationEnabled: config.registrationEnabled === true, stateFile: path.join(dataDir, 'telegram-offsets.json') });
+  bots = createTelegramBots({ clientToken: config.clientToken, service: backend.auth.bots, siteUrl, registrationEnabled: config.registrationEnabled === true, stateFile: path.join(dataDir, 'telegram-offsets.json') });
   stage = 'запуск локального API на порту 5184';
   await new Promise((resolve, reject) => { backend.once('error', reject); backend.listen(5184, '127.0.0.1', resolve); });
   frontend = await createVite({ root: workspace, server: { host: '127.0.0.1', port: 5183, strictPort: true, proxy: { '/api': 'http://127.0.0.1:5184', '/media': 'http://127.0.0.1:5184', '/downloads': 'http://127.0.0.1:5184' } } });
@@ -64,12 +73,12 @@ try {
     if (current === lastHealth) return;
     lastHealth = current;
     await fs.writeFile(path.join(dataDir, 'status.json'), JSON.stringify({ running: true, pid: process.pid, updatedAt: new Date().toISOString(), ...status }), { mode: 0o600 });
-    if (!status.client.running || !status.admin.running) console.error('SCENZA: один из ботов остановил получение сообщений. Проверьте статус сервиса и подключение.');
+    if (!status.client.running) console.error('SCENZA: бот остановил получение сообщений. Проверьте статус сервиса и подключение.');
   };
   await writeHealth();
   healthTimer = setInterval(() => { void writeHealth().catch(() => console.error('SCENZA: не удалось сохранить статус сервиса.')); }, 10000);
   healthTimer.unref();
-  console.log('SCENZA: клиентский и административный боты запущены. Локальный сайт: http://127.0.0.1:5183. Публичная оплата не подключена.');
+  console.log('SCENZA: единый бот запущен. Панель владельца: /admin. Локальный сайт: http://127.0.0.1:5183.');
   process.on('SIGINT', () => void stop());
   process.on('SIGTERM', () => void stop());
 } catch (error) {

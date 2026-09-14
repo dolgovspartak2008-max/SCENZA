@@ -17,6 +17,9 @@ export function Dialog({ open, onClose, title, closeLabel, className, children, 
     dialog.showModal();
     return () => { dialog.close(); document.body.style.overflow = overflow; returnFocus.current?.focus({ preventScroll: true }); };
   }, [open]);
+  useEffect(() => {
+    if (open) ref.current?.scrollTo({ top: 0, behavior: 'instant' });
+  }, [open, title]);
   return <dialog ref={ref} className={cn('scenza-dialog', className)} aria-label={title} onCancel={(event) => { event.preventDefault(); closeRef.current(); }} onKeyDown={(event) => {
     if (event.key !== 'Tab') return;
     const controls = Array.from(event.currentTarget.querySelectorAll<HTMLElement>('button, a[href], input, textarea, select, video[controls], [tabindex]')).filter(element => element.tabIndex >= 0 && !element.hasAttribute('disabled') && element.getClientRects().length > 0);

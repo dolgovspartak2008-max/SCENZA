@@ -7,8 +7,8 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const url = 'http://127.0.0.1:5173/';
 async function ready() {
   try {
-    const [page, health] = await Promise.all([fetch(url, { signal: AbortSignal.timeout(1000) }), fetch(`${url}api/health`, { signal: AbortSignal.timeout(1000) })]);
-    return page.ok && health.ok && (await health.json()).ok === true;
+    const [page, health, session] = await Promise.all([fetch(url, { signal: AbortSignal.timeout(1000) }), fetch(`${url}api/health`, { signal: AbortSignal.timeout(1000) }), fetch(`${url}api/auth/session`, { signal: AbortSignal.timeout(1000) })]);
+    return page.ok && health.ok && session.ok && (await health.json()).ok === true && typeof (await session.json()).localStudioAllowed === 'boolean';
   } catch { return false; }
 }
 if (!await ready()) {

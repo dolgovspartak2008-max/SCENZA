@@ -10,7 +10,7 @@ test('accounts isolate libraries and media, expired trials cannot process or mod
   const dataDir = await fs.mkdtemp(path.join(testRoot, 'account-test-'));
   let time = Date.now();
   const mail = new Map();
-  const server = await createServer({ dataDir, seed: false, authOptions: { allowedOrigins: ['http://127.0.0.1:5183'], legalReady: true, now: () => time, emailDelivery: async ({ email, code }) => mail.set(email, code) } });
+  const server = await createServer({ dataDir, seed: false, authOptions: { telegramBotUsername: 'SCENZA_BOT', telegramMembership: async () => true, allowedOrigins: ['http://127.0.0.1:5183'], legalReady: true, now: () => time, emailDelivery: async ({ email, code }) => mail.set(email, code) } });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(async () => {
     await new Promise(resolve => server.close(resolve));
@@ -22,11 +22,18 @@ test('accounts isolate libraries and media, expired trials cannot process or mod
   async function request(route, cookie = '', body) {
     return fetch(base + route, { method: body ? 'POST' : 'GET', headers: { Cookie: cookie, Origin: 'http://127.0.0.1:5183', ...(body ? { 'Content-Type': 'application/json' } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
   }
+  let telegramId = 4242;
   async function register(email) {
-    const start = await request('/api/auth/email/start', '', { email, password: 'valid-password', mode: 'register', termsAccepted: true, dataConsent: true, remember: true });
-    assert.equal(start.status, 200);
+    const input = { email, password: 'valid-password', mode: 'register', termsAccepted: true, dataConsent: true, remember: true };
+    const proofResponse = await request('/api/auth/email/start', '', input);
+    assert.equal(proofResponse.status, 200);
+    const proof = await proofResponse.json();
+    const cookie = proofResponse.headers.get('set-cookie').split(';')[0];
+    const token = new URL(proof.url).searchParams.get('start').slice(6), id = telegramId++;
+    await server.auth.bots.beginWebsiteLogin(token, id); await server.auth.bots.confirmWebsiteLogin(token, id);
+    const start = await request('/api/auth/email/start', cookie, input);
     const { challengeId } = await start.json();
-    const verified = await request('/api/auth/email/verify', '', { challengeId, code: mail.get(email) });
+    const verified = await request('/api/auth/email/verify', cookie, { challengeId, code: mail.get(email) });
     assert.equal(verified.status, 200);
     return { cookie: verified.headers.get('set-cookie').split(';')[0], ...(await verified.json()) };
   }

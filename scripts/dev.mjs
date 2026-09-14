@@ -1,7 +1,11 @@
 import { spawn } from 'node:child_process';
+import { existsSync } from 'node:fs';
+
+if (existsSync('.env')) process.loadEnvFile('.env');
 
 const children = [
-  spawn(process.execPath, ['server/index.mjs'], { stdio: 'inherit', windowsHide: true }),
+  spawn(process.execPath, ['server/ai/worker.mjs'], { stdio: 'inherit', windowsHide: true }),
+  spawn(process.execPath, ['--watch', '--watch-path=server', 'server/index.mjs'], { stdio: 'inherit', windowsHide: true }),
   spawn(process.execPath, ['node_modules/vite/bin/vite.js', ...(process.argv.includes('--preview') ? ['preview'] : [])], { stdio: 'inherit', windowsHide: true }),
 ];
 let stopping = false;

@@ -1,0 +1,35 @@
+[Unit]
+Description=SCENZA background video worker
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=scenza
+Group=scenza
+WorkingDirectory=/srv/scenza/current
+EnvironmentFile=/srv/scenza/shared/production.env
+EnvironmentFile=/srv/scenza/shared/ai.env
+Environment=SCENZA_PYTHON=/srv/scenza/shared/venv/bin/python
+Environment=SCENZA_WHISPER_CACHE=/srv/scenza/shared/models
+Environment=HF_HOME=/srv/scenza/shared/huggingface
+Environment=XDG_CACHE_HOME=/srv/scenza/shared/cache
+Environment=OMP_NUM_THREADS=3
+RuntimeDirectory=scenza-worker
+RuntimeDirectoryMode=0750
+ExecStart=/usr/bin/flock --no-fork --nonblock /run/scenza-worker/instance.lock /usr/local/bin/node server/ai/worker.mjs
+Restart=on-failure
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=180
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/scenza/shared /run/scenza-worker
+MemoryMax=5G
+CPUQuota=300%
+
+[Install]
+WantedBy=multi-user.target

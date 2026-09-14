@@ -7,9 +7,9 @@ export function validateAuth(input: AuthInput): AuthFieldErrors {
   };
 }
 export type AuthMode = 'login' | 'register' | 'reset';
-export type Account = { id: string; email?: string; name: string; provider: string; trialStartedAt: string | null; trialEndsAt: string | null; accessUntil?: string | null; accessSource?: string; accessActive: boolean; blocked?: boolean; role?: 'user' | 'support' };
-export type AuthConfig = { emailEnabled: boolean; telegramEnabled: boolean; telegramClientId: string; legalReady: boolean; botRegistrationEnabled?: boolean };
-export type AuthResult = { user?: Account; verificationRequired?: boolean; challengeId?: string };
+export type Account = { id: string; email?: string; telegramUserId?: string; name: string; provider: string; trialStartedAt: string | null; trialEndsAt: string | null; accessUntil?: string | null; accessSource?: string; accessActive: boolean; blocked?: boolean; blockReason?: string | null; createdAt?: string | null; lastActiveAt?: string | null; telegramUsername?: string | null; role?: 'user' | 'support' };
+export type AuthConfig = { emailEnabled: boolean; emailCodeLength?: 6 | 8; telegramEnabled: boolean; telegramClientId: string; telegramBotEnabled?: boolean; legalReady: boolean; botRegistrationEnabled?: boolean; requiredTelegramChannel?: string };
+export type AuthResult = { user?: Account; verificationRequired?: boolean; challengeId?: string; telegramRequired?: boolean; telegramVerified?: boolean; url?: string; expiresAt?: number };
 export type Consent = { termsAccepted: boolean; dataConsent: boolean; remember: boolean };
 
 export async function authRequest<T>(route: string, body?: object): Promise<T> {
@@ -18,7 +18,7 @@ export async function authRequest<T>(route: string, body?: object): Promise<T> {
     response = await fetch(`/api/auth/${route}`, { method: body ? 'POST' : 'GET', credentials: 'same-origin', ...(body ? { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {}), signal: AbortSignal.timeout(15000) });
   } catch { throw new Error('Не удалось связаться с сервером. Повторите попытку.'); }
   const result = await response.json().catch(() => null);
-  if (!response.ok || !result) throw Object.assign(new Error(response.status === 404 ? 'Сервер входа ещё не запущен. Перезапустите локальную SCENZA.' : result?.error || 'Сервис входа временно недоступен. Повторите попытку позже.'), { status: response.status });
+  if (!response.ok || !result) throw Object.assign(new Error(response.status === 404 ? 'Сервис входа не подключён к этому сайту. Обратитесь в поддержку SCENZA.' : result?.error || 'Сервис входа временно недоступен. Повторите попытку позже.'), { status: response.status });
   return result as T;
 }
 export const authAdapter = {

@@ -1,6 +1,10 @@
 .connection-error { display: flex; align-items: center; gap: 12px; padding: 13px; margin: 12px 0 20px; color: #ffc6ba; background: #362129; border: 1px solid #765064; border-radius: 5px; font-size: .9rem; }
 .connection-error .button { flex-shrink: 0; margin-left: auto; }
 .loading-panel { padding: 60px 20px; color: var(--muted); text-align: center; }
+.studio-start { display: flex; flex-direction: column; justify-content: center; align-items: flex-start; min-height: calc(100svh - 100px); max-width: 600px; margin: 0 auto; padding: 40px 0; }
+.studio-start h1 { font-size: clamp(2rem, 4vw, 3.5rem); line-height: 1.12; text-wrap: balance; }
+.studio-start p { margin: 16px 0 28px; max-width: 38ch; color: var(--muted); line-height: 1.6; }
+.studio-start .button { min-width: 160px; min-height: 48px; }
 .project-card.has-video { aspect-ratio: auto; display: flex; flex-direction: column; }
 .project-card.has-video > video { width: 100%; aspect-ratio: 16 / 9; background: #050b10; object-fit: contain; display: block; }
 .project-card.has-video .project-card-bottom { position: static; background: #0c1822; padding-top: 13px; gap: 8px; flex-wrap: wrap; }
@@ -58,7 +62,34 @@
 .storage-info > span { display: block; font-size: .83rem; color: var(--accent); margin-top: 10px; }
 .telegram-status { margin-bottom: 18px; }
 .settings-panel { scroll-margin-top: 20px; }
-.avatar { padding: 0; }
+.app-header { height: auto; min-height: 46px; padding-block: 6px; }
+.breadcrumbs { flex-wrap: wrap; row-gap: 2px; }
+.breadcrumbs a { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.breadcrumbs a[aria-current="page"] { color: var(--subtle); }
+.avatar { padding: 0; display: grid; place-items: center; }
+.scenza-dialog.support-dialog { position: fixed; inset: 0; margin: auto; width: min(560px, calc(100% - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 60px 24px 24px; color: #edf3fa; background: #11212c; border: 1px solid #486b82; border-radius: 12px; }
+.support-dialog::backdrop { background: #030b13bc; }
+.support-dialog .scenza-dialog-close { position: absolute; top: 10px; right: 12px; display: grid; place-items: center; width: 44px; height: 44px; }
+.support-dialog h2 { font-size: 1.5rem; }
+.support-intro { margin: 10px 0 22px; color: #b6cadd; }
+.support-dialog form { display: grid; gap: 10px; }
+.support-dialog label { font-size: .9rem; }
+.support-dialog textarea { width: 100%; padding: 12px; resize: vertical; line-height: 1.5; font-size: 1rem; }
+.support-dialog small, .support-ticket-meta, .support-reply time { color: #b6cadd; font-size: .78rem; }
+.support-dialog .button { min-height: 44px; }
+.support-dialog form .button { justify-self: start; }
+.support-dialog button:disabled { opacity: .55; cursor: not-allowed; }
+.support-error { color: #ffc6ba; margin-top: 16px; }
+.support-notice { color: #a2edc5; margin-top: 12px; }
+.support-list-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 24px 0 16px; }
+.support-list-heading h3 { font-size: 1rem; }
+.support-tickets { list-style: none; margin: 0; padding: 0; }
+.support-tickets li { border-top: 1px solid #365061; padding: 18px 0; }
+.support-ticket-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; }
+.support-tickets p { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 10px; line-height: 1.5; }
+.support-reply { margin-top: 16px; padding-left: 14px; border-left: 2px solid #89d6bd; }
+.support-reply strong { font-size: .9rem; }
+.support-reply time { display: block; margin-top: 8px; }
 @media(max-width:1100px) { .clips-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media(max-width:800px) { .settings-layout { grid-template-columns: minmax(0,1fr); } }
 @media(max-width:650px) {

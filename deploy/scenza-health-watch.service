@@ -1,0 +1,24 @@
+[Unit]
+Description=SCENZA website and backend health monitor
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=scenza
+Group=scenza
+WorkingDirectory=/srv/scenza/current
+EnvironmentFile=/srv/scenza/shared/production.env
+ExecStart=/usr/local/bin/node scripts/health-watch.mjs
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+MemoryMax=192M
+
+[Install]
+WantedBy=multi-user.target

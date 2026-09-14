@@ -1,0 +1,94 @@
+@property --scenza-shiny-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+:where(.scenza-landing, .scenza-dialog) :is(.shiny-cta, .pd-export, .pd-tool-button, .scenza-robot-control) {
+  --scenza-shiny-accent: var(--accent, #48e7d0);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  transition: translate 180ms ease, box-shadow 220ms ease;
+}
+
+:where(.scenza-landing, .scenza-dialog) :is(.shiny-cta, .pd-export, .pd-tool-button, .scenza-robot-control)::before,
+:where(.scenza-landing, .scenza-dialog) :is(.shiny-cta, .pd-export, .pd-tool-button, .scenza-robot-control)::after {
+  content: '';
+  position: absolute;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+:where(.scenza-landing, .scenza-dialog) :is(.shiny-cta, .pd-export, .pd-tool-button, .scenza-robot-control)::before {
+  inset: 0;
+  padding: 1px;
+  background: conic-gradient(from var(--scenza-shiny-angle), transparent 0% 65%, var(--scenza-shiny-accent) 76%, #f3fffe 81%, var(--scenza-shiny-accent) 86%, transparent 95%);
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask-composite: exclude;
+  opacity: .65;
+  animation: scenza-shiny-border 3s linear infinite;
+  transition: opacity 220ms ease;
+}
+
+:where(.scenza-landing, .scenza-dialog) :is(.shiny-cta, .pd-export, .pd-tool-button, .scenza-robot-control)::after {
+  inset: 0;
+  background: linear-gradient(105deg, transparent 20%, #ffffff24 46%, #ffffff50 50%, transparent 76%), radial-gradient(circle, #ffffff42 .5px, transparent .7px);
+  background-size: 100% 100%, 4px 4px;
+  opacity: .35;
+  transform: translateX(-110%);
+  animation: scenza-shiny-shimmer 4.5s ease-in-out infinite;
+  transition: opacity 220ms ease;
+}
+
+:where(.scenza-landing, .scenza-dialog) :is(.shiny-cta, .pd-export, .pd-tool-button, .scenza-robot-control):is(:hover, :focus-visible):not(:disabled, [aria-disabled='true'])::before {
+  opacity: 1;
+}
+
+:where(.scenza-landing, .scenza-dialog) :is(.shiny-cta, .pd-export, .pd-tool-button, .scenza-robot-control):is(:hover, :focus-visible):not(:disabled, [aria-disabled='true'])::after {
+  opacity: .7;
+}
+
+:where(.scenza-landing, .scenza-dialog) :is(.shiny-cta, .pd-export, .pd-tool-button, .scenza-robot-control):focus-visible {
+  outline: 2px solid var(--scenza-shiny-accent);
+  outline-offset: 4px;
+}
+
+:where(.scenza-landing, .scenza-dialog) :is(.shiny-cta, .pd-export, .pd-tool-button, .scenza-robot-control):active:not(:disabled, [aria-disabled='true']) {
+  translate: 0 1px;
+}
+
+:where(.scenza-landing, .scenza-dialog) :is(.shiny-cta, .pd-export, .pd-tool-button, .scenza-robot-control):is(:disabled, [aria-disabled='true'])::before,
+:where(.scenza-landing, .scenza-dialog) :is(.shiny-cta, .pd-export, .pd-tool-button, .scenza-robot-control):is(:disabled, [aria-disabled='true'])::after {
+  animation: none;
+  opacity: 0;
+}
+
+@keyframes scenza-shiny-border {
+  to { --scenza-shiny-angle: 360deg; }
+}
+
+@keyframes scenza-shiny-shimmer {
+  0%, 20% { transform: translateX(-110%); }
+  70%, 100% { transform: translateX(110%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :where(.scenza-landing, .scenza-dialog) :is(.shiny-cta, .pd-export, .pd-tool-button, .scenza-robot-control),
+  :where(.scenza-landing, .scenza-dialog) :is(.shiny-cta, .pd-export, .pd-tool-button, .scenza-robot-control)::before,
+  :where(.scenza-landing, .scenza-dialog) :is(.shiny-cta, .pd-export, .pd-tool-button, .scenza-robot-control)::after {
+    animation: none;
+    transition: none;
+    translate: none;
+  }
+
+  :where(.scenza-landing, .scenza-dialog) :is(.shiny-cta, .pd-export, .pd-tool-button, .scenza-robot-control)::after {
+    display: none;
+  }
+
+  :where(.scenza-landing, .scenza-dialog) :is(.shiny-cta, .pd-export, .pd-tool-button, .scenza-robot-control):active:not(:disabled, [aria-disabled='true']) {
+    translate: none;
+  }
+}

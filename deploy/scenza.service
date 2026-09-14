@@ -1,0 +1,29 @@
+[Unit]
+Description=SCENZA backend and Telegram bots
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=scenza
+Group=scenza
+WorkingDirectory=/srv/scenza/current
+EnvironmentFile=/srv/scenza/shared/production.env
+EnvironmentFile=/srv/scenza/shared/ai.env
+RuntimeDirectory=scenza
+RuntimeDirectoryMode=0750
+ExecStart=/usr/bin/flock --no-fork --nonblock /run/scenza/instance.lock /usr/local/bin/node server/production.mjs
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/scenza/shared /run/scenza
+MemoryMax=3G
+CPUQuota=250%
+
+[Install]
+WantedBy=multi-user.target

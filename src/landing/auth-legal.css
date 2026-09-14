@@ -1,4 +1,13 @@
-.scenza-dialog.scenza-auth-dialog { width: min(560px, calc(100% - 24px)); padding: 38px 28px 24px; background: #061713; border: 1px solid #234b43; border-radius: 18px; }
+.scenza-dialog.scenza-auth-dialog { width: min(560px, calc(100% - 24px)); padding: 64px 28px 24px; background: #061713; border: 1px solid #234b43; border-radius: 18px; }
+.scenza-auth-dialog .scenza-dialog-close { top: 12px; right: 16px; width: 44px; height: 44px; }
+.scenza-account-button { min-width: 0; max-width: 210px; }
+.scenza-account-button svg { flex-shrink: 0; }
+.scenza-account-button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.scenza-mobile-account { display: none; min-width: 0; margin-left: auto; }
+@media (max-width: 560px) {
+  .scenza-mobile-account { display: block; max-width: min(42vw, 190px); }
+  .scenza-mobile-account .scenza-account-button { max-width: 100%; min-height: 44px; padding: 8px; font-size: .7rem; }
+}
 .scenza-auth-dialog .scenza-auth-tabs { margin-top: 8px; padding: 5px; border-radius: 17px; border-color: #245147; background: #051c17; }
 .scenza-auth-dialog .scenza-auth-tabs button { display: flex; align-items: center; justify-content: center; gap: 10px; min-height: 55px; border-radius: 12px; font-size: 1rem; font-weight: 650; color: #b2cec7; }
 .scenza-auth-dialog .scenza-auth-tabs button[aria-selected=true] { background: linear-gradient(100deg, #30d7d8, #63f6d3); color: #031a16; }
@@ -48,7 +57,7 @@
 .scenza-account > button { margin-top: 18px; }
 .scenza-auth-dialog :focus-visible, .scenza-legal-page :focus-visible { outline: 2px solid #7affd8; outline-offset: 4px; }
 .scenza-auth-dialog button:disabled { cursor: not-allowed; opacity: .55; }
-.scenza-footer .scenza-legal-footer { display: block; margin-top: 24px; border-top: 1px solid #28433b; padding-top: 22px; }
+.scenza-footer .scenza-legal-footer { display: block; }
 .scenza-legal-footer nav { margin: 0; gap: 8px 22px; font-size: .76rem; }
 .scenza-legal-footer nav a { min-height: 34px; align-items: center; }
 .scenza-legal-footer p { text-align: left; width: auto; color: #afc4bd; line-height: 1.8; margin-top: 12px; font-size: .74rem; }
@@ -69,7 +78,7 @@
 .scenza-access-message { max-width: 650px; margin: 15vh auto; padding: 24px; line-height: 1.8; }
 .scenza-access-message button { display: block; margin-top: 20px; padding: 12px 24px; border: 1px solid #4b977d; border-radius: 8px; }
 @media (max-width: 560px) {
-  .scenza-dialog.scenza-auth-dialog { padding: 38px 19px 22px; }
+  .scenza-dialog.scenza-auth-dialog { padding: 64px 19px 22px; }
   .scenza-auth-dialog .scenza-auth-tabs button { font-size: .92rem; }
   .scenza-auth-dialog .scenza-auth-heading h2 { font-size: 1.65rem; }
   .scenza-auth-options { font-size: .8rem; }

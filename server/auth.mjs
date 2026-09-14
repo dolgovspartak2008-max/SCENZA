@@ -2,10 +2,12 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { randomBytes, randomInt, randomUUID, scrypt as scryptCallback, timingSafeEqual, createHash, createPublicKey, verify } from 'node:crypto';
 import { promisify } from 'node:util';
+import { isIP } from 'node:net';
+import { setTimeout as delay } from 'node:timers/promises';
 
 const scrypt = promisify(scryptCallback);
 const DAY = 86400000;
-const VERSION = '2026-09-13';
+const VERSION = '2026-09-13-public-1';
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const secret = () => randomBytes(32).toString('base64url');
 const digest = value => createHash('sha256').update(value).digest('hex');
@@ -34,36 +36,55 @@ async function jsonBody(request) {
   } catch { throw fail('Некорректный запрос.'); }
 }
 
-export async function createAuth({ dataDir, telegramClientId = '', emailDelivery, legalReady = false, botRegistrationEnabled = false, ownerTelegramIds = [], secureCookies = false, allowedOrigins = [], now = Date.now, fetch: fetcher = globalThis.fetch }) {
+export async function createAuth({ dataDir, telegramClientId = '', telegramBotUsername = '', telegramMembership, emailDelivery, emailAuth, accountStore, legalReady = false, botRegistrationEnabled = false, ownerTelegramIds = [], secureCookies = false, trustProxy = false, allowedOrigins = [], now = Date.now, fetch: fetcher = globalThis.fetch }) {
   if (!dataDir) throw new Error('Auth dataDir is required');
   await fs.mkdir(dataDir, { recursive: true, mode: 0o700 });
   const accountsFile = path.join(dataDir, 'accounts.json');
-  let state = { accounts: [], events: [], promos: [], processed: [] };
+  let state = { accounts: [], events: [], promos: [], processed: [], sessions: [] };
   try {
     const saved = JSON.parse(await fs.readFile(accountsFile, 'utf8'));
     state = Array.isArray(saved) ? { ...state, accounts: saved } : saved;
-    if (!state || !['accounts', 'events', 'promos', 'processed'].every(key => Array.isArray(state[key])) || state.accounts.some(user => !user.id || !['email', 'telegram'].includes(user.provider) || !(user.trialEndsAt === null && user.trialStartedAt === null || Number.isFinite(Date.parse(user.trialEndsAt))))) throw new Error('Invalid auth account store');
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
+  if (accountStore) state = await accountStore.load(state);
+  if (!state || !['accounts', 'events', 'promos', 'processed'].every(key => Array.isArray(state[key])) || state.accounts.some(user => !user.id || !['email', 'telegram'].includes(user.provider) || !(user.trialEndsAt === null && user.trialStartedAt === null || Number.isFinite(Date.parse(user.trialEndsAt))))) throw new Error('Invalid auth account store');
+  if (state.sessions === undefined) state.sessions = [];
+  if (!Array.isArray(state.sessions) || state.sessions.some(item => !item || !/^[a-f0-9]{64}$/.test(item.tokenHash) || typeof item.userId !== 'string' || !Number.isFinite(item.expiresAt))) throw new Error('Invalid auth session store');
+  state.sessions = state.sessions.filter(item => item.expiresAt > now());
   let accounts = state.accounts;
   const telegramId = value => /^(?:[1-9]\d{0,15})$/.test(String(value)) && Number.isSafeInteger(Number(value)) ? String(value) : null;
-  const owners = new Set(ownerTelegramIds.map(telegramId).filter(Boolean));
-  const sessions = new Map(), challenges = new Map(), telegramChallenges = new Map(), limits = new Map();
+  const owners = new Set(ownerTelegramIds.map(telegramId).filter(Boolean).slice(0, 1));
+  const challenges = new Map(), telegramChallenges = new Map(), botChallenges = new Map(), limits = new Map();
   const dummyPassword = await passwordHash(secret());
-  const emailEnabled = typeof emailDelivery === 'function';
+  if (emailAuth && (typeof emailAuth.send !== 'function' || typeof emailAuth.verify !== 'function')) throw new Error('Invalid email verification provider');
+  const emailEnabled = !!emailAuth || typeof emailDelivery === 'function';
+  const emailCodeLength = emailAuth ? 8 : 6;
   const clientId = String(telegramClientId);
   const telegramEnabled = /^\d+$/.test(clientId);
+  const telegramBotEnabled = /^[A-Za-z][A-Za-z0-9_]{4,31}$/.test(telegramBotUsername);
   let writeQueue = Promise.resolve();
   let cachedKeys = null, keysExpiry = 0, keysAttempt = -Infinity, keysRequest;
 
-  // ponytail: one process owns this file; use a transactional database before running multiple workers.
+  // ponytail: one backend owns the account snapshot; use SQL transactions before adding workers.
   function mutate(update) {
     const operation = writeQueue.then(async () => {
       const next = structuredClone(state);
+      next.sessions = next.sessions.filter(item => item.expiresAt > now());
       const result = update(next.accounts, next);
-      const temporary = `${accountsFile}.${randomUUID()}.tmp`;
-      await fs.writeFile(temporary, JSON.stringify(next), { mode: 0o600, flag: 'wx' });
-      try { await fs.rename(temporary, accountsFile); }
-      catch (error) { await fs.unlink(temporary).catch(() => {}); throw error; }
+      if (accountStore) await accountStore.save(next);
+      else {
+        const temporary = `${accountsFile}.${randomUUID()}.tmp`;
+        await fs.writeFile(temporary, JSON.stringify(next), { mode: 0o600, flag: 'wx' });
+        try {
+          for (let attempt = 0; ; attempt++) {
+            try { await fs.rename(temporary, accountsFile); break; }
+            catch (error) {
+              if (process.platform !== 'win32' || !['EPERM', 'EBUSY'].includes(error.code) || attempt >= 3) throw error;
+              await delay(25 * (attempt + 1));
+            }
+          }
+        }
+        catch (error) { await fs.unlink(temporary).catch(() => {}); throw error; }
+      }
       state = next;
       accounts = next.accounts;
       return result;
@@ -74,7 +95,7 @@ export async function createAuth({ dataDir, telegramClientId = '', emailDelivery
 
   function cleanup() {
     const current = now();
-    for (const map of [sessions, challenges, telegramChallenges, limits]) {
+    for (const map of [challenges, telegramChallenges, botChallenges, limits]) {
       for (const [key, value] of map) if (value.expiresAt <= current) map.delete(key);
     }
   }
@@ -94,15 +115,16 @@ export async function createAuth({ dataDir, telegramClientId = '', emailDelivery
     const extended = Date.parse(user.accessUntil) || 0;
     const trial = Date.parse(user.trialEndsAt) || 0;
     const until = Math.max(extended, trial);
-    return { id: user.id, ...(user.email ? { email: user.email } : {}), ...(user.telegramUserId ? { telegramUserId: user.telegramUserId } : {}), name: user.name, provider: user.provider, role: user.role === 'support' ? 'support' : 'user', blocked: user.blocked === true, trialStartedAt: user.trialStartedAt, trialEndsAt: user.trialEndsAt, accessUntil: until ? new Date(until).toISOString() : null, accessSource: extended >= trial && extended ? user.accessSource || 'grant' : trial ? 'trial' : 'none', accessActive: !user.blocked && now() < until };
+    return { id: user.id, ...(user.email ? { email: user.email } : {}), ...(user.telegramUserId ? { telegramUserId: user.telegramUserId } : {}), name: user.name, provider: user.provider, createdAt: user.createdAt || null, lastActiveAt: user.lastActiveAt || null, telegramUsername: user.telegramUsername || null, blockReason: user.blockReason || null, role: user.role === 'support' ? 'support' : 'user', blocked: user.blocked === true, trialStartedAt: user.trialStartedAt, trialEndsAt: user.trialEndsAt, accessUntil: until ? new Date(until).toISOString() : null, accessSource: extended >= trial && extended ? user.accessSource || 'grant' : trial ? 'trial' : 'none', accessActive: now() < until };
   }
 
   function session(request) {
     const token = cookies(request).scena_session;
-    const stored = token && sessions.get(digest(token));
-    if (!stored || stored.expiresAt <= now()) { if (token) sessions.delete(digest(token)); return null; }
+    const tokenHash = token && digest(token);
+    const stored = tokenHash && state.sessions.find(item => item.tokenHash === tokenHash);
+    if (!stored || stored.expiresAt <= now()) return null;
     const user = accounts.find(account => account.id === stored.userId);
-    return user && !user.blocked ? publicUser(user) : null;
+    return user ? publicUser(user) : null;
   }
 
   function cookie(response, name, value, seconds) {
@@ -112,23 +134,24 @@ export async function createAuth({ dataDir, telegramClientId = '', emailDelivery
   }
 
   async function signIn(request, response, user, remember, expectedPasswordHash) {
+    const token = secret();
+    const previous = cookies(request).scena_session;
     user = await mutate((next, transaction) => {
       const current = next.find(item => item.id === user.id);
-      if (!current || current.blocked) throw fail('Доступ к аккаунту заблокирован.', 403);
-      if (current.provider === 'email' && current.password?.hash !== expectedPasswordHash) throw fail('Неверный email или пароль.', 401);
+      if (!current) throw fail('Аккаунт не найден.', 404);
+      if (expectedPasswordHash !== undefined && current.password?.hash !== expectedPasswordHash) throw fail('Неверный email или пароль.', 401);
       if (current.trialStartedAt === null) {
         if (!legalReady) throw fail('Вход откроется после подготовки сайта.', 503);
         current.trialStartedAt = new Date(now()).toISOString();
         current.trialEndsAt = new Date(now() + 7 * DAY).toISOString();
       }
+      if (previous) transaction.sessions = transaction.sessions.filter(item => item.tokenHash !== digest(previous));
+      if (transaction.sessions.length >= 10000) throw fail('Сервис занят. Попробуйте позже.', 503);
+      transaction.sessions.push({ tokenHash: digest(token), userId: current.id, expiresAt: now() + (remember ? 30 : 1) * DAY });
+      current.lastActiveAt = new Date(now()).toISOString();
       audit(transaction, 'login', current.id, current.id, { provider: current.provider });
       return current;
     });
-    const previous = cookies(request).scena_session;
-    if (previous) sessions.delete(digest(previous));
-    if (sessions.size >= 10000) throw fail('Сервис занят. Попробуйте позже.', 503);
-    const token = secret();
-    sessions.set(digest(token), { userId: user.id, expiresAt: now() + (remember ? 30 : 1) * DAY });
     cookie(response, 'scena_session', token, remember ? 30 * 86400 : undefined);
     return { user: publicUser(user) };
   }
@@ -186,15 +209,53 @@ export async function createAuth({ dataDir, telegramClientId = '', emailDelivery
     });
   }
 
-  const publicPromo = promo => ({ id: promo.id, maskedCode: promo.maskedCode, days: promo.days, uses: promo.userIds.length, maxUses: promo.maxUses, expiresAt: promo.expiresAt, revoked: promo.revoked, createdAt: promo.createdAt });
+  const publicPromo = promo => ({ id: promo.id, maskedCode: promo.maskedCode, type: 'access_days', days: promo.days, uses: promo.userIds.length, maxUses: promo.maxUses, expiresAt: promo.expiresAt, revoked: promo.revoked, deleted: promo.deleted === true, newUsersOnly: promo.newUsersOnly === true, createdAt: promo.createdAt });
+
+  function botChallenge(token, id) {
+    const challenge = typeof token === 'string' && /^[A-Za-z0-9_-]{43}$/.test(token) && botChallenges.get(digest(token));
+    const actor = telegramId(id);
+    if (!challenge || challenge.expiresAt <= now() || !actor || challenge.actor && challenge.actor !== actor) throw fail('Ссылка входа недействительна или истекла. Начните вход на сайте заново.', 410);
+    return challenge;
+  }
 
   // Only the verified Telegram update worker calls this service; these methods are not HTTP routes.
   const bots = {
+    ownerTelegramId: [...owners][0] || null,
+    async beginWebsiteLogin(token, id) {
+      const challenge = botChallenge(token, id);
+      if (challenge.userId) throw fail('Вход уже подтверждён. Вернитесь во вкладку сайта.', 409);
+      const user = accounts.find(item => item.telegramUserId === telegramId(id));
+      if (!user && !challenge.verificationOnly && !botRegistrationEnabled) throw fail('Регистрация в боте пока недоступна.', 503);
+      challenge.actor = telegramId(id);
+      return { registrationRequired: !user && !challenge.verificationOnly, verificationOnly: challenge.verificationOnly === true, ...(challenge.verificationOnly ? { email: challenge.email } : {}), expiresAt: challenge.expiresAt };
+    },
+    async confirmWebsiteLogin(token, id) {
+      const challenge = botChallenge(token, id);
+      if (!challenge.actor || challenge.userId) throw fail('Ссылка входа недействительна или уже использована.', 410);
+      if (challenge.verificationOnly) {
+        await requireMembership(challenge.actor);
+        if (challenge.expiresAt <= now() || botChallenges.get(digest(token)) !== challenge) throw fail('Ссылка подтверждения истекла.', 410);
+        challenge.confirmed = true;
+        return { ok: true, verificationOnly: true };
+      }
+      const user = accounts.find(item => item.telegramUserId === telegramId(id));
+      if (!user) throw fail('Сначала зарегистрируйтесь.');
+      challenge.userId = user.id;
+      return { ok: true };
+    },
+    async cancelWebsiteLogin(token, id) {
+      botChallenge(token, id);
+      botChallenges.delete(digest(token));
+    },
     async adminRole(id) {
       const verifiedId = telegramId(id);
       if (owners.has(verifiedId)) return 'owner';
-      const user = accounts.find(item => item.telegramUserId === verifiedId);
-      return user && !user.blocked && user.role === 'support' ? 'support' : null;
+      return null;
+    },
+    async adminSnapshot(actorId) {
+      ownerOnly(actorId);
+      const users = accounts.map(publicUser);
+      return { accounts: users, users, events: structuredClone(state.events), promos: state.promos.map(publicPromo), ownerTelegramId: [...owners][0] || null };
     },
     async userByTelegram(id) {
       const user = accounts.find(item => item.telegramUserId === telegramId(id));
@@ -213,6 +274,7 @@ export async function createAuth({ dataDir, telegramClientId = '', emailDelivery
       const id = telegramId(profile?.id);
       if (!id) throw fail('Некорректный Telegram ID.');
       if (accepted?.termsAccepted !== true || accepted?.dataConsent !== true) throw fail('Подтвердите условия и согласие на обработку данных отдельно.');
+      if (!accounts.some(user => user.telegramUserId === id)) await requireMembership(id);
       return botMutation(eventKey, 'register', id, (next, transaction) => {
         const existing = next.find(user => user.telegramUserId === id);
         if (existing) return publicUser(existing);
@@ -239,16 +301,17 @@ export async function createAuth({ dataDir, telegramClientId = '', emailDelivery
         return publicUser(user);
       });
     },
-    async block(actorId, userId, blocked, eventKey) {
+    async block(actorId, userId, blocked, eventKey, reason) {
       ownerOnly(actorId);
       if (typeof blocked !== 'boolean') throw fail('Некорректное состояние блокировки.');
+      if (blocked && (typeof reason !== 'string' || !reason.trim() || reason.trim().length > 500)) throw fail('Укажите причину блокировки (до 500 символов).');
       const result = await botMutation(eventKey, 'block', actorId, (next, transaction) => {
         const user = findUser(next, userId);
         user.blocked = blocked;
-        audit(transaction, blocked ? 'account.block' : 'account.unblock', actorId, user.id);
+        user.blockReason = blocked ? reason.trim() : null;
+        audit(transaction, blocked ? 'account.block' : 'account.unblock', actorId, user.id, blocked ? { reason: user.blockReason } : {});
         return publicUser(user);
       });
-      if (result.blocked) for (const [key, value] of sessions) if (value.userId === result.id) sessions.delete(key);
       return result;
     },
     async role(actorId, userId, role, eventKey) {
@@ -261,18 +324,34 @@ export async function createAuth({ dataDir, telegramClientId = '', emailDelivery
         return publicUser(user);
       });
     },
-    async createPromo(actorId, days, uses, eventKey) {
+    async createPromo(actorId, days, uses, eventKey, options = {}) {
       ownerOnly(actorId); daysValue(days);
       if (!Number.isInteger(uses) || uses < 1 || uses > 1000) throw fail('Укажите число активаций от 1 до 1000.');
+      const code = options.code === undefined ? randomBytes(10).toString('hex').slice(0, 16).toUpperCase() : typeof options.code === 'string' ? options.code.trim().toUpperCase() : '';
+      if (!/^[A-Z0-9_-]{4,32}$/.test(code)) throw fail('Код: 4–32 латинские буквы, цифры, дефис или подчёркивание.');
+      const expires = options.expiresAt === undefined ? now() + 30 * DAY : typeof options.expiresAt === 'string' ? Date.parse(options.expiresAt) : NaN;
+      if (!Number.isFinite(expires) || expires <= now()) throw fail('Укажите будущую дату окончания промокода.');
+      if (options.newUsersOnly !== undefined && typeof options.newUsersOnly !== 'boolean') throw fail('Некорректное ограничение новых пользователей.');
       return botMutation(eventKey, 'promo.create', actorId, (_, transaction) => {
-        const code = randomBytes(10).toString('hex').slice(0, 16).toUpperCase();
-        const promo = { id: randomUUID(), hash: digest(code), maskedCode: `••••${code.slice(-4)}`, days, maxUses: uses, userIds: [], createdAt: new Date(now()).toISOString(), expiresAt: new Date(now() + 30 * DAY).toISOString(), revoked: false };
+        if (transaction.promos.some(item => item.hash === digest(code))) throw fail('Этот код уже использовался. Выберите другой.', 409);
+        const promo = { id: randomUUID(), hash: digest(code), maskedCode: `••••${code.slice(-4)}`, days, maxUses: uses, userIds: [], createdAt: new Date(now()).toISOString(), expiresAt: new Date(expires).toISOString(), revoked: false, newUsersOnly: options.newUsersOnly === true };
         transaction.promos.push(promo);
         audit(transaction, 'promo.create', actorId, null, { promoId: promo.id, days, maxUses: uses });
         return { ...publicPromo(promo), code };
       }, false);
     },
-    async promos() { return state.promos.slice(-100).reverse().map(publicPromo); },
+    async promos() { return state.promos.filter(item => !item.deleted).slice(-100).reverse().map(publicPromo); },
+    async deletePromo(actorId, id, eventKey) {
+      ownerOnly(actorId);
+      return botMutation(eventKey, 'promo.delete', actorId, (_, transaction) => {
+        const promo = transaction.promos.find(item => item.id === id);
+        if (!promo) throw fail('Промокод не найден.', 404);
+        promo.deleted = true;
+        promo.revoked = true;
+        audit(transaction, 'promo.delete', actorId, null, { promoId: promo.id });
+        return publicPromo(promo);
+      });
+    },
     async revokePromo(actorId, codeOrId, eventKey) {
       ownerOnly(actorId);
       return botMutation(eventKey, 'promo.revoke', actorId, (_, transaction) => {
@@ -289,13 +368,14 @@ export async function createAuth({ dataDir, telegramClientId = '', emailDelivery
       if (!verifiedId) throw fail('Некорректный Telegram ID.');
       cleanup(); rate(`promo:${verifiedId}`, 10);
       const normalized = typeof code === 'string' ? code.trim().toUpperCase() : '';
-      if (!/^[A-Z0-9]{16}$/.test(normalized)) throw fail('Промокод недействителен или недоступен.');
+      if (!/^[A-Z0-9_-]{4,32}$/.test(normalized)) throw fail('Промокод недействителен или недоступен.');
       return botMutation(eventKey, 'promo.redeem', verifiedId, (next, transaction) => {
         const user = next.find(item => item.telegramUserId === verifiedId);
         if (!user) throw fail('Сначала зарегистрируйтесь.', 403);
         if (user.blocked) throw fail('Доступ к аккаунту заблокирован.', 403);
         const promo = transaction.promos.find(item => item.hash === digest(normalized));
-        if (!promo || promo.revoked || Date.parse(promo.expiresAt) <= now() || promo.userIds.length >= promo.maxUses || promo.userIds.includes(user.id)) throw fail('Промокод недействителен или недоступен.');
+        if (!promo || promo.revoked || promo.deleted || Date.parse(promo.expiresAt) <= now() || promo.userIds.length >= promo.maxUses || promo.userIds.includes(user.id)) throw fail('Промокод недействителен или недоступен.');
+        if (promo.newUsersOnly && (!(Date.parse(user.createdAt) > now() - 7 * DAY) || transaction.promos.some(item => item.userIds.includes(user.id)))) throw fail('Промокод доступен только в первые 7 дней и до первой активации промокода.');
         promo.userIds.push(user.id);
         extend(user, promo.days, 'promo');
         audit(transaction, 'promo.redeem', verifiedId, user.id, { promoId: promo.id, days: promo.days });
@@ -306,12 +386,42 @@ export async function createAuth({ dataDir, telegramClientId = '', emailDelivery
       if (!['studio.read', 'studio.upload', 'studio.import', 'studio.export', 'studio.update', 'studio.telegram_send', 'studio.rejected'].includes(event)) throw fail('Недопустимое событие.');
       const routes = ['/api/health', '/api/projects', '/api/clips', '/api/publications', '/api/settings', '/api/upload', '/api/import', '/api/telegram/send', '/api/projects/:id', '/api/projects/:id/analyze', '/api/projects/:id/export', '/api/projects/:id/banner', '/api/jobs/:id', '/api/jobs/:id/cancel', '/api/publications/:id', '/media/:file', '/downloads/:file', '/unknown'];
       if (!detail || !['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE'].includes(detail.method) || !routes.includes(detail.route) || !Number.isInteger(detail.status) || detail.status < 100 || detail.status > 599) throw fail('Недопустимые метаданные события.');
+      const important = detail.status >= 500 || !['studio.read', 'studio.rejected'].includes(event) && !['GET', 'HEAD'].includes(detail.method);
+      const current = findUser(accounts, userId);
+      if (!important && now() - (Date.parse(current.lastActiveAt) || 0) < 60000) return;
       return mutate((next, transaction) => {
         const user = findUser(next, userId);
-        audit(transaction, event, user.id, user.id, { method: detail.method, route: detail.route, status: detail.status });
+        user.lastActiveAt = new Date(now()).toISOString();
+        if (important) audit(transaction, event, user.id, user.id, { method: detail.method, route: detail.route, status: detail.status });
       });
     },
   };
+
+  async function requireMembership(id) {
+    if (!telegramId(id) || typeof telegramMembership !== 'function') throw fail('Не удалось проверить подписку на @MediaFlowTech. Повторите позже.', 503);
+    let member;
+    try { member = await telegramMembership(String(id)); }
+    catch { throw fail('Не удалось проверить подписку на @MediaFlowTech. Повторите позже.', 503); }
+    if (member !== true) throw fail('Для регистрации подпишитесь на @MediaFlowTech и повторите проверку.', 403);
+  }
+
+  function browserChallenge(request) {
+    const [token, browserToken] = (cookies(request).scena_telegram_bot || '').split('.');
+    const challenge = token && botChallenges.get(digest(token));
+    return challenge && challenge.expiresAt > now() && browserToken && equal(digest(browserToken), challenge.browserHash) ? challenge : null;
+  }
+
+  function startBotChallenge(request, response, body, verificationOnly = false) {
+    if (!telegramBotEnabled) throw fail('Подтверждение Telegram пока недоступно. Повторите позже.', 503);
+    const previous = browserChallenge(request);
+    const old = cookies(request).scena_telegram_bot?.split('.')[0];
+    if (previous) botChallenges.delete(digest(old));
+    if (botChallenges.size >= 1000) throw fail('Сервис занят. Попробуйте позже.', 503);
+    const token = secret(), browserToken = secret(), expiresAt = now() + 5 * 60000;
+    botChallenges.set(digest(token), { browserHash: digest(browserToken), expiresAt, remember: body.remember === true, verificationOnly, ...(verificationOnly ? { email: body.email.trim().toLowerCase() } : {}) });
+    cookie(response, 'scena_telegram_bot', `${token}.${browserToken}`, 300);
+    return { url: `https://t.me/${telegramBotUsername}?start=login_${token}`, expiresAt };
+  }
 
   async function emailStart(request, response, body) {
     if (!emailEnabled) throw fail('Вход по email пока не подключён. Сервис доставки писем не настроен.', 503);
@@ -320,52 +430,77 @@ export async function createAuth({ dataDir, telegramClientId = '', emailDelivery
     if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw fail('Введите корректный email.');
     if (typeof body.password !== 'string' || body.password.length < 8 || body.password.length > 128) throw fail('Пароль должен содержать от 8 до 128 символов.');
     rate(`email:${digest(email)}`, body.mode === 'login' ? 10 : 5);
-    const existing = accounts.find(user => user.email === email && user.provider === 'email');
+    const existing = accounts.find(user => user.email === email);
     if (body.mode === 'login') {
       const credential = existing?.password || dummyPassword;
       const candidate = (await scrypt(body.password, credential.salt, 64)).toString('hex');
-      if (!existing || !equal(candidate, credential.hash) || accounts.find(user => user.id === existing.id)?.password.hash !== credential.hash) throw fail('Неверный email или пароль.', 401);
+      if (!existing || !equal(candidate, credential.hash) || accounts.find(user => user.id === existing.id)?.password?.hash !== credential.hash) throw fail('Неверный email или пароль.', 401);
       return signIn(request, response, existing, body.remember === true, credential.hash);
     }
     const accepted = body.mode === 'register' ? consent(body) : null;
+    const proof = body.mode === 'register' ? browserChallenge(request) : null;
+    if (body.mode === 'register' && (!proof?.verificationOnly || !proof.confirmed || proof.email !== email)) return { telegramRequired: true, ...startBotChallenge(request, response, body, true) };
+    if (proof) await requireMembership(proof.actor);
     const challengeId = secret();
     if ((body.mode === 'register' && existing) || (body.mode === 'reset' && !existing)) return { verificationRequired: true, challengeId, message: 'Если действие доступно для этого адреса, письмо с кодом будет отправлено.' };
     if (challenges.size >= 1000) throw fail('Сервис занят. Попробуйте позже.', 503);
     const hashedPassword = await passwordHash(body.password);
-    const code = String(randomInt(100000, 1000000));
-    const pending = { email, password: hashedPassword, purpose: body.mode, userId: existing?.id, consent: accepted, remember: body.remember === true, codeHash: digest(code), expiresAt: now() + 10 * 60000, attempts: 0 };
+    const code = emailAuth ? null : String(randomInt(100000, 1000000));
+    const pending = { telegramUserId: proof?.actor, browserHash: proof?.browserHash, email, password: hashedPassword, purpose: body.mode, userId: existing?.id, consent: accepted, remember: body.remember === true, codeHash: code ? digest(code) : null, expiresAt: now() + 10 * 60000, attempts: 0 };
+    if (proof) {
+      proof.expiresAt = pending.expiresAt;
+      cookie(response, 'scena_telegram_bot', cookies(request).scena_telegram_bot, 600);
+    }
     challenges.set(digest(challengeId), pending);
-    try { await emailDelivery({ email, code, purpose: body.mode }); }
+    try { if (emailAuth) await emailAuth.send({ email, purpose: body.mode }); else await emailDelivery({ email, code, purpose: body.mode }); }
     catch { challenges.delete(digest(challengeId)); throw fail('Не удалось отправить код. Попробуйте позже.', 503); }
     return { verificationRequired: true, challengeId, message: 'Если действие доступно для этого адреса, письмо с кодом будет отправлено.' };
   }
 
   async function emailVerify(request, response, body) {
-    if (typeof body.challengeId !== 'string' || body.challengeId.length > 100 || typeof body.code !== 'string' || !/^\d{6}$/.test(body.code)) throw fail('Введите шестизначный код из письма.');
+    if (typeof body.challengeId !== 'string' || body.challengeId.length > 100 || typeof body.code !== 'string' || body.code.length !== emailCodeLength || !/^\d+$/.test(body.code)) throw fail(`Введите ${emailCodeLength} цифр из письма.`);
     const key = digest(body.challengeId);
     const pending = challenges.get(key);
     if (!pending || pending.expiresAt <= now()) throw fail('Код истёк или уже использован. Запросите новый.');
+    if (pending.verifying) throw fail('Код уже проверяется. Подождите.', 409);
     if (++pending.attempts > 5) { challenges.delete(key); throw fail('Слишком много попыток. Запросите новый код.', 429); }
-    if (!equal(digest(body.code), pending.codeHash)) throw fail('Неверный код.');
+    pending.verifying = true;
+    try {
+      if (pending.purpose === 'register') {
+        const proof = browserChallenge(request);
+        if (!proof?.confirmed || proof.actor !== pending.telegramUserId || proof.browserHash !== pending.browserHash) throw fail('Подтвердите Telegram в этой вкладке заново.', 403);
+        await requireMembership(pending.telegramUserId);
+      }
+      if (emailAuth) await emailAuth.verify({ email: pending.email, code: body.code });
+      else if (!equal(digest(body.code), pending.codeHash)) throw fail('Неверный код.');
+      if (challenges.get(key) !== pending || pending.expiresAt <= now()) throw fail('Код истёк или уже использован.');
+      if (pending.purpose === 'register' && browserChallenge(request)?.browserHash !== pending.browserHash) throw fail('Подтвердите Telegram в этой вкладке заново.', 403);
+    } finally { pending.verifying = false; }
     challenges.delete(key);
     const user = await mutate((next, transaction) => {
       if (pending.purpose === 'register') {
         if (!legalReady) throw fail('Регистрация временно недоступна.', 503);
         if (next.some(item => item.email === pending.email)) throw fail('Адрес уже зарегистрирован. Войдите в аккаунт.', 409);
-        const created = account({ provider: 'email', email: pending.email, name: pending.email.split('@')[0], password: pending.password, emailVerifiedAt: new Date(now()).toISOString() }, pending.consent);
+        const linked = next.find(item => item.telegramUserId === pending.telegramUserId);
+        if (linked?.email && linked.email !== pending.email) throw fail('Этот Telegram уже связан с другим адресом. Войдите в существующий аккаунт.', 409);
+        if (linked) {
+          Object.assign(linked, { email: pending.email, password: pending.password, emailVerifiedAt: new Date(now()).toISOString() });
+          audit(transaction, 'account.email_link', linked.id, linked.id);
+          return linked;
+        }
+        const created = account({ provider: 'email', telegramUserId: pending.telegramUserId, email: pending.email, name: pending.email.split('@')[0], password: pending.password, emailVerifiedAt: new Date(now()).toISOString() }, pending.consent);
         next.push(created);
         audit(transaction, 'register', created.id, created.id, { provider: 'email' });
         return created;
       }
-      const existing = next.find(item => item.id === pending.userId && item.email === pending.email && item.provider === 'email');
+      const existing = next.find(item => item.id === pending.userId && item.email === pending.email);
       if (!existing) throw fail('Запрос восстановления недействителен.');
-      if (existing.blocked) throw fail('Доступ к аккаунту заблокирован.', 403);
       existing.password = pending.password;
+      transaction.sessions = transaction.sessions.filter(item => item.userId !== existing.id);
       audit(transaction, 'password.reset', existing.id, existing.id);
       return existing;
     });
     if (pending.purpose === 'reset') {
-      for (const [key, value] of sessions) if (value.userId === user.id) sessions.delete(key);
       for (const [key, value] of challenges) if (value.email === user.email) challenges.delete(key);
     }
     return signIn(request, response, user, pending.remember, pending.password.hash);
@@ -417,20 +552,21 @@ export async function createAuth({ dataDir, telegramClientId = '', emailDelivery
     } catch (error) { if (error.status === 503) throw error; throw fail('Не удалось подтвердить вход через Telegram. Начните заново.', 401); }
     if (!['register', 'login'].includes(body.mode)) throw fail('Выберите вход или регистрацию.');
     const verifiedId = Number.isSafeInteger(claims.id) && claims.id > 0 ? String(claims.id) : null;
+    if (!verifiedId) throw fail('Не удалось подтвердить Telegram ID.', 401);
+    if (!accounts.some(item => item.telegramUserId === verifiedId || item.telegramSubject === claims.sub)) await requireMembership(verifiedId);
     const user = await mutate((next, transaction) => {
-      const bySubject = next.find(item => item.provider === 'telegram' && item.telegramSubject === claims.sub);
-      const byId = verifiedId && next.find(item => item.provider === 'telegram' && item.telegramUserId === verifiedId);
-      if (bySubject && byId && bySubject.id !== byId.id || bySubject?.telegramUserId && verifiedId && bySubject.telegramUserId !== verifiedId || byId?.telegramSubject && byId.telegramSubject !== claims.sub) throw fail('Не удалось подтвердить Telegram ID.', 401);
+      const bySubject = next.find(item => item.telegramSubject === claims.sub);
+      const byId = next.find(item => item.telegramUserId === verifiedId);
+      if (bySubject && byId && bySubject.id !== byId.id || bySubject?.telegramUserId && bySubject.telegramUserId !== verifiedId || byId?.telegramSubject && byId.telegramSubject !== claims.sub) throw fail('Не удалось подтвердить Telegram ID.', 401);
       const existing = bySubject || byId;
       if (existing) {
-        if (existing.blocked) throw fail('Доступ к аккаунту заблокирован.', 403);
         existing.telegramSubject = claims.sub;
-        if (verifiedId) existing.telegramUserId = verifiedId;
+        existing.telegramUserId = verifiedId;
         return existing;
       }
       if (body.mode !== 'register') throw fail('Аккаунт не найден. Перейдите к регистрации.', 404);
       const accepted = consent(body);
-      const created = account({ provider: 'telegram', telegramSubject: claims.sub, ...(verifiedId ? { telegramUserId: verifiedId } : {}), name: typeof claims.name === 'string' ? claims.name.trim().slice(0, 100) : 'Пользователь Telegram' }, accepted);
+      const created = account({ provider: 'telegram', telegramSubject: claims.sub, telegramUserId: verifiedId, name: typeof claims.name === 'string' ? claims.name.trim().slice(0, 100) : 'Пользователь Telegram' }, accepted);
       next.push(created);
       audit(transaction, 'register', created.id, created.id, { provider: 'telegram', source: 'website' });
       return created;
@@ -446,7 +582,7 @@ export async function createAuth({ dataDir, telegramClientId = '', emailDelivery
     cleanup();
     try {
       let result;
-      if (request.method === 'GET' && route === '/api/auth/config') result = { emailEnabled, telegramEnabled, telegramClientId: telegramEnabled ? clientId : '', legalReady, botRegistrationEnabled, legalVersion: VERSION };
+      if (request.method === 'GET' && route === '/api/auth/config') result = { emailEnabled, emailCodeLength, telegramEnabled, telegramBotEnabled, telegramClientId: telegramEnabled ? clientId : '', legalReady, botRegistrationEnabled, legalVersion: VERSION, requiredTelegramChannel: 'https://t.me/MediaFlowTech' };
       else if (request.method === 'GET' && route === '/api/auth/session') result = { user: session(request) };
       else {
         if (request.method !== 'POST') throw fail('Метод не поддерживается.', 405);
@@ -455,17 +591,43 @@ export async function createAuth({ dataDir, telegramClientId = '', emailDelivery
           const expected = `${secureCookies ? 'https' : 'http'}://${request.headers.host}`;
           if (request.headers.origin !== expected && !allowedOrigins.includes(request.headers.origin)) throw fail('Запрос с другого сайта запрещён.', 403);
         }
-        rate(`ip:${request.socket.remoteAddress || 'unknown'}`, 60);
+        const remoteAddress = request.socket.remoteAddress || 'unknown';
+        const forwarded = request.headers['x-forwarded-for'];
+        const loopback = remoteAddress === '::1' || (isIP(remoteAddress) === 4 && remoteAddress.startsWith('127.')) || (isIP(remoteAddress) === 6 && remoteAddress.startsWith('::ffff:127.'));
+        const clientAddress = trustProxy === true && loopback && typeof forwarded === 'string' && isIP(forwarded) ? forwarded : remoteAddress;
+        const botStatus = route === '/api/auth/telegram/bot/status';
+        rate(`${botStatus ? 'bot-status' : 'ip'}:${clientAddress}`, botStatus ? 360 : 60);
         const body = await jsonBody(request);
         if (route === '/api/auth/logout') {
           const token = cookies(request).scena_session;
           const current = session(request);
-          if (current) await mutate((_, transaction) => audit(transaction, 'logout', current.id, current.id));
-          if (token) sessions.delete(digest(token));
+          if (token) await mutate((_, transaction) => {
+            transaction.sessions = transaction.sessions.filter(item => item.tokenHash !== digest(token));
+            if (current) audit(transaction, 'logout', current.id, current.id);
+          });
           cookie(response, 'scena_session', '', 0);
           result = { ok: true };
         } else if (route === '/api/auth/email/start') result = await emailStart(request, response, body);
         else if (route === '/api/auth/email/verify') result = await emailVerify(request, response, body);
+        else if (route === '/api/auth/telegram/bot/start') {
+          if (!telegramBotEnabled) throw fail('Вход через Telegram-бота пока не подключён.', 503);
+          if (!legalReady) throw fail('Вход откроется после подготовки сайта.', 503);
+          if (!['login', 'register'].includes(body.mode)) throw fail('Выберите вход или регистрацию.');
+          result = startBotChallenge(request, response, body);
+        } else if (botStatus) {
+          const [token, browserToken] = (cookies(request).scena_telegram_bot || '').split('.');
+          const challenge = token && botChallenges.get(digest(token));
+          if (!challenge || challenge.expiresAt <= now() || !browserToken || !equal(digest(browserToken), challenge.browserHash)) throw fail('Ссылка входа недействительна или истекла. Начните вход заново.', 410);
+          if (challenge.verificationOnly && challenge.confirmed) result = { telegramVerified: true };
+          else if (!challenge.userId) result = { pending: true };
+          else {
+            botChallenges.delete(digest(token));
+            cookie(response, 'scena_telegram_bot', '', 0);
+            const user = accounts.find(item => item.id === challenge.userId);
+            if (!user) throw fail('Аккаунт не найден.', 404);
+            result = await signIn(request, response, user, challenge.remember);
+          }
+        }
         else if (route === '/api/auth/telegram/challenge' || route === '/api/auth/telegram') {
           if (!telegramEnabled) throw fail('Вход через Telegram пока не подключён.', 503);
           if (route.endsWith('/challenge')) {

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { demoPlans, monthlyEquivalent, annualDiscount, parseSelection } from '../src/landing/plans.ts';
-import { authAdapter, validateAuth } from '../src/landing/auth.ts';
+import { authAdapter, authRequest, validateAuth } from '../src/landing/auth.ts';
 
 test('annual numbers distinguish monthly equivalent and full payment; trial stays unchanged', () => {
   for (const plan of demoPlans) {
@@ -26,4 +26,9 @@ test('auth validates input and sends credentials only to the server', async (t) 
   assert.equal(sent.url, '/api/auth/email/start');
   assert.equal(sent.init.credentials, 'same-origin');
   assert.equal(JSON.parse(sent.init.body).mode, 'register');
+});
+
+test('missing hosted auth reports the unavailable service without a local restart instruction', async t => {
+  t.mock.method(globalThis, 'fetch', async () => new Response('NOT_FOUND', { status: 404 }));
+  await assert.rejects(authRequest('config'), error => error.status === 404 && /Сервис входа не подключён/.test(error.message) && !/Перезапустите локальную/.test(error.message));
 });

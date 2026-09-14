@@ -1,35 +1,39 @@
 import { memo } from 'react';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useMotionActivity } from './use-motion-activity';
 import './animations.css';
 
-function FloatingPaths({ mirrored, active }: { mirrored?: boolean; active: boolean }) {
+function FloatingPaths({ position }: { position: number }) {
   return (
-    <svg className={cn('scenza-floating-paths', mirrored && 'scenza-floating-paths-mirrored')} viewBox="0 0 1200 600" fill="none" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
-      {Array.from({ length: 9 }, (_, index) => (
-        <motion.path
-          key={index}
-          d={`M ${-150 - index * 20} ${470 + index * 17} C ${190 - index * 7} ${460 - index * 20}, ${140 + index * 8} ${75 - index * 15}, ${545 + index * 22} ${80 + index * 14} S ${1050 + index * 7} ${300 + index * 18}, ${1370 + index * 12} ${35 + index * 11}`}
-          stroke="currentColor"
-          strokeWidth={0.6 + index * 0.05}
-          initial={false}
-          animate={active ? { pathLength: [0.35, 0.65, 0.35], pathOffset: [0, 0.8, 0], opacity: [0.09, 0.25, 0.09] } : { pathLength: 0.6, pathOffset: 0, opacity: 0.16 }}
-          transition={active ? { duration: 27 + index * 2, repeat: Infinity, ease: 'linear', delay: index * -1.5 } : { duration: 0 }}
-        />
-      ))}
-    </svg>
+    <div className="scenza-path-layer">
+      <svg className="scenza-floating-paths" viewBox="0 0 696 316" fill="none" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+        {Array.from({ length: 36 }, (_, index) => (
+          <path
+            key={index}
+            className="scenza-path-base"
+            pathLength="1"
+            strokeLinecap="round"
+            stroke="currentColor"
+            strokeWidth={0.5 + index * 0.03}
+            strokeOpacity={0.1 + index * 0.03}
+            style={{ '--path-duration': `${20 + index * 7 % 10}s`, '--path-delay': `${-index * .8 - (position < 0 ? 9 : 0)}s` } as CSSProperties}
+            d={`M-${380 - index * 5 * position} -${189 + index * 6}C-${380 - index * 5 * position} -${189 + index * 6} -${312 - index * 5 * position} ${216 - index * 6} ${152 - index * 5 * position} ${343 - index * 6}C${616 - index * 5 * position} ${470 - index * 6} ${684 - index * 5 * position} ${875 - index * 6} ${684 - index * 5 * position} ${875 - index * 6}`}
+          />
+        ))}
+      </svg>
+    </div>
   );
 }
 
 export const BackgroundPaths = memo(function BackgroundPaths({ children, className }: { children?: ReactNode; className?: string }) {
   const { ref, active } = useMotionActivity<HTMLDivElement>();
   return (
-    <div ref={ref} className={cn('scenza-background-paths', className)}>
+    <div ref={ref} className={cn('scenza-background-paths', className)} data-motion-active={active}>
       <div className="scenza-path-decoration" aria-hidden="true">
-        <FloatingPaths active={active} />
-        <FloatingPaths active={active} mirrored />
+        <FloatingPaths position={1} />
+        <FloatingPaths position={-1} />
       </div>
       {children}
     </div>

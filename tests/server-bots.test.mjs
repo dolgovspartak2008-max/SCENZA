@@ -25,6 +25,44 @@ function setup(options = {}) {
 }
 const confirmation = sent => sent.findLast(item => item.reply_markup?.inline_keyboard.flat().some(button => button.callback_data?.startsWith('confirm:')))?.reply_markup.inline_keyboard.flat().find(button => button.callback_data?.startsWith('confirm:')).callback_data;
 
+test('one bot routes admin commands with role checks and keeps client access for the owner', async () => {
+  const { bots, sent, mutations } = setup({ adminToken: undefined });
+  await bots.handleClient(msg(1, '/admin', 1));
+  assert.match(sent.at(-1).text, /Панель SCENZA/);
+  assert.doesNotMatch(sent.at(-1).text, /Роль:/);
+  await bots.handleClient(msg(3, '/users', 2));
+  assert.match(sent.at(-1).text, /Доступ к панели не предоставлен/);
+  await bots.handleClient(msg(2, '/grant 3 7', 3));
+  assert.equal(mutations.length, 0);
+  await bots.handleClient(msg(1, '/grant 3 7', 4));
+  const action = confirmation(sent);
+  assert.ok(action);
+  await bots.handleClient(cb(3, action, 5));
+  assert.equal(mutations.length, 0);
+  await bots.handleClient(cb(1, action, 6));
+  assert.equal(mutations.length, 1);
+  await bots.handleClient(msg(1, '/status', 7));
+  assert.match(sent.at(-1).text, /Аккаунт: Клиент/);
+});
+
+test('a shared token configures and polls only one Telegram bot', async t => {
+  const calls = [];
+  const { bots } = setup({ adminToken: 'client-secret', fetch: async (url, init) => {
+    const method = url.split('/').at(-1);
+    calls.push({ method, ...JSON.parse(init.body) });
+    return { ok: method !== 'getUpdates', json: async () => method === 'getUpdates'
+      ? { ok: false, error_code: 401 }
+      : { ok: true, result: method === 'getWebhookInfo' ? { url: '' } : true } };
+  } });
+  t.after(() => bots.stop());
+  await bots.configure();
+  assert.equal(calls.filter(item => item.method === 'setMyCommands').length, 1);
+  await bots.start();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(calls.filter(item => item.method === 'getUpdates').length, 1);
+  assert.equal(calls.filter(item => item.method === 'getWebhookInfo').length, 1);
+});
+
 test('admin requires owner for every mutation; confirmation is actor-bound and single use', async () => {
   const { bots, sent, mutations } = setup();
   await bots.handleAdmin(msg(3, '/grant 3 7'));
@@ -43,15 +81,57 @@ test('admin requires owner for every mutation; confirmation is actor-bound and s
   assert.deepEqual(mutations[0], ['grant', 1, 'account-1', 7, 'admin:7']);
 });
 
-test('support can read users; unknown visitor can only obtain own id', async () => {
+test('support and unknown visitors cannot read admin data; own Telegram id remains available', async () => {
   const { bots, sent } = setup();
-  await bots.handleAdmin(msg(2, '/users'));
-  assert.ok(sent.some(item => item.text?.includes('Клиент')));
-  sent.length = 0;
-  await bots.handleAdmin(msg(3, '/id'));
-  assert.ok(sent.some(item => item.text?.includes('3')));
-  await bots.handleAdmin(cb(3, 'user:account-1'));
-  assert.ok(!sent.some(item => item.text?.includes('Клиент')));
+  for (const id of [2, 3]) {
+    sent.length = 0;
+    await bots.handleAdmin(msg(id, '/users', id * 10));
+    await bots.handleAdmin(cb(id, 'user:account-1', id * 10 + 1));
+    await bots.handleAdmin(msg(id, '/logs', id * 10 + 2));
+    assert.ok(sent.filter(item => item.method === 'sendMessage').every(item => /Доступ к панели не предоставлен/.test(item.text)));
+    assert.ok(!sent.some(item => item.text?.includes('Клиент')));
+    await bots.handleAdmin(msg(id, '/id', id * 10 + 3));
+    assert.equal(sent.at(-1).text, `Ваш Telegram ID: ${id}`);
+  }
+});
+
+test('owner menu and command list do not offer role assignment; legacy actions cannot change roles', async () => {
+  let changes = 0;
+  const { bots, sent } = setup({ service: { role: async () => { changes++; } } });
+  await bots.configure();
+  assert.ok(sent.filter(item => item.method === 'setMyCommands').every(item => !item.commands.some(command => command.command === 'role')));
+  await bots.handleAdmin(msg(1, '/admin', 1));
+  await bots.handleAdmin(cb(1, 'user:account-1', 2));
+  assert.ok(sent.filter(item => item.reply_markup).every(item => !item.reply_markup.inline_keyboard.flat().some(button => button.callback_data?.startsWith('role:'))));
+  await bots.handleAdmin(msg(1, '/role 3 support', 3));
+  await bots.handleAdmin(cb(1, 'role:account-1:support', 4));
+  assert.equal(changes, 0);
+  assert.match(sent.at(-1).text, /Назначение других администраторов не поддерживается/);
+});
+
+test('registration consent can be retried after subscribing without creating an account on failed verification', async () => {
+  let subscribed = false, created = 0;
+  const { bots, sent } = setup({ registrationEnabled: true, service: {
+    userByTelegram: async () => null,
+    registerTelegram: async () => {
+      if (!subscribed) throw Object.assign(new Error('Подпишитесь на https://t.me/MediaFlowTech и повторите проверку.'), { status: 403 });
+      created++;
+      return { id: 'new-account', name: 'Клиент', accessActive: false };
+    },
+  } });
+  await bots.handleClient(cb(3, 'register', 1));
+  const terms = sent.at(-1).reply_markup.inline_keyboard.flat().find(button => button.callback_data?.startsWith('terms:')).callback_data;
+  await bots.handleClient(cb(3, terms, 2));
+  const consent = sent.at(-1).reply_markup.inline_keyboard.flat().find(button => button.callback_data?.startsWith('consent:')).callback_data;
+  await bots.handleClient(cb(3, consent, 3));
+  assert.equal(created, 0);
+  assert.match(sent.at(-1).text, /Подпишитесь.*MediaFlowTech/);
+  subscribed = true;
+  await bots.handleClient(cb(3, consent, 4));
+  assert.equal(created, 1);
+  assert.match(sent.at(-1).text, /Регистрация завершена/);
+  await bots.handleClient(cb(3, consent, 5));
+  assert.equal(created, 1);
 });
 
 test('registration requires two separate consent steps; no private site links escape', async () => {

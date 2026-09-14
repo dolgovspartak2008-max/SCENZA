@@ -13,8 +13,9 @@ const root = await fs.mkdtemp(path.join(testRoot, 'auth-browser-'));
 const screenshots = path.resolve('tmp/ui-auth');
 await fs.mkdir(screenshots, { recursive: true });
 const inbox = [];
-const disabled = await createServer({ dataDir: path.join(root, 'disabled'), seed: false });
-const connected = await createServer({ dataDir: path.join(root, 'connected'), seed: false, authOptions: { legalReady: true, emailDelivery: async message => inbox.push(message) } });
+const allowedOrigins = [new URL(base).origin];
+const disabled = await createServer({ dataDir: path.join(root, 'disabled'), seed: false, allowedOrigins });
+const connected = await createServer({ dataDir: path.join(root, 'connected'), seed: false, allowedOrigins, allowLocalStudio: false, authOptions: { allowedOrigins, legalReady: true, telegramBotUsername: 'SCENZA_BOT', telegramMembership: async () => true, emailDelivery: async message => inbox.push(message) } });
 await Promise.all([disabled, connected].map(server => new Promise(resolve => server.listen(0, '127.0.0.1', resolve))));
 let backend = disabled;
 const browser = await chromium.launch({ headless: true });
@@ -22,17 +23,19 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1080 }, re
 const errors = [];
 page.on('pageerror', error => errors.push(error.message));
 page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-await page.route(/\/(api|media|downloads)\//, async route => {
+const proxy = async route => {
   const url = new URL(route.request().url());
   const response = await route.fetch({ url: `http://127.0.0.1:${backend.address().port}${url.pathname}${url.search}` });
   await route.fulfill({ response });
-});
+};
+await page.route(/\/(api|media|downloads)\//, proxy);
 try {
   await page.goto(base);
   await page.getByRole('button', { name: 'Войти', exact: true }).first().click();
   const dialog = page.getByRole('dialog', { name: 'Вход в систему' });
   await dialog.waitFor();
   await page.waitForTimeout(300);
+  assert.equal(await dialog.getByRole('link', { name: 'Открыть локальную студию', exact: true }).count(), 1);
   assert.equal(await dialog.getByRole('button', { name: 'Войти через Telegram', exact: true }).isDisabled(), true);
   await dialog.locator('#scenza-password').fill('sample-password');
   await dialog.getByRole('button', { name: 'Показать пароль', exact: true }).click();
@@ -45,6 +48,12 @@ try {
     assert.equal(await dialog.evaluate(element => element.scrollWidth <= element.clientWidth + 1), true, `login overflows at ${width}`);
     if (width === 390) await page.screenshot({ path: path.join(screenshots, 'login-mobile.png') });
   }
+  await dialog.getByRole('link', { name: 'Открыть локальную студию', exact: true }).click();
+  await page.locator('.loading-panel').waitFor({ state: 'hidden' });
+  await page.locator('.app-shell').waitFor();
+  assert.equal(await page.locator('.connection-error').count(), 0);
+  await page.goto(base);
+  await page.getByRole('button', { name: 'Войти', exact: true }).first().click();
   await dialog.getByRole('tab', { name: 'Регистрация', exact: true }).click();
   const registration = page.getByRole('dialog', { name: 'Регистрация', exact: true });
   assert.equal(await registration.locator('input[type=checkbox]:checked').count(), 0);
@@ -59,7 +68,7 @@ try {
   for (const key of ['privacy', 'consent', 'terms', 'offer', 'payment', 'cookies', 'contacts']) {
     await page.goto(`${base}/legal/${key}`);
     await page.locator('h1').waitFor();
-    assert.match(await page.locator('main').innerText(), /Проект документа/);
+    assert.ok((await page.locator('h1').innerText()).length > 0);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${key} overflows`);
   }
   await page.screenshot({ path: path.join(screenshots, 'legal-mobile.png'), fullPage: true });
@@ -70,29 +79,80 @@ try {
   await page.goto(base);
   await page.getByRole('button', { name: 'Войти', exact: true }).first().click();
   await page.getByRole('tab', { name: 'Регистрация', exact: true }).click();
+  assert.equal(await registration.getByRole('link', { name: 'Открыть локальную студию', exact: true }).count(), 0);
   await registration.locator('#scenza-email').fill('browser-test@example.com');
   await registration.locator('#scenza-password').fill('sample-password');
   await registration.getByRole('checkbox').nth(0).check();
   await registration.getByRole('checkbox').nth(1).check();
   await registration.getByRole('button', { name: 'Создать аккаунт', exact: true }).click();
+  await registration.getByRole('link', { name: 'Открыть бота SCENZA', exact: true }).waitFor();
+  assert.equal(inbox.length, 0, 'Email registration cannot bypass Telegram membership');
+  const botLink = await registration.getByRole('link', { name: 'Открыть бота SCENZA', exact: true }).getAttribute('href');
+  const botToken = new URL(botLink).searchParams.get('start').slice(6);
+  const verification = await connected.auth.bots.beginWebsiteLogin(botToken, 4242);
+  assert.equal(verification.verificationOnly, true);
+  await connected.auth.bots.confirmWebsiteLogin(botToken, 4242);
+  await registration.getByText('Telegram подтверждён.', { exact: false }).waitFor();
+  await registration.getByRole('button', { name: 'Создать аккаунт', exact: true }).click();
   await page.locator('#scenza-code').waitFor();
   assert.equal(inbox.length, 1);
   await page.locator('#scenza-code').fill(inbox[0].code);
   await page.getByRole('button', { name: 'Подтвердить и войти', exact: true }).click();
-  await page.getByRole('heading', { name: 'Ваш аккаунт SCENZA' }).waitFor();
-  assert.match(await page.getByRole('dialog').innerText(), /Пробный доступ активен/);
-  await page.getByRole('link', { name: 'Перейти в студию' }).click();
-  await page.locator('.scenza-session-strip').waitFor();
+  await page.waitForURL('**/app');
+  await page.locator('.app-shell').waitFor();
+  assert.equal(await page.evaluate(async () => (await (await fetch('/api/auth/session')).json()).user.email), 'browser-test@example.com');
+  const saved = await page.context().storageState();
+  const sessionCookie = saved.cookies.find(cookie => cookie.name === 'scena_session');
+  assert.ok(sessionCookie?.expires > Date.now() / 1000 + 29 * 86400, 'Registration remembers the account for 30 days');
+  const returningContext = await browser.newContext({ storageState: { ...saved, cookies: saved.cookies.filter(cookie => cookie.expires > Date.now() / 1000) } });
+  await returningContext.route(/\/(api|media|downloads)\//, proxy);
+  const returningPage = await returningContext.newPage();
+  await returningPage.goto(`${base}/app`);
+  await returningPage.locator('.app-shell').waitFor();
+  assert.equal(await returningPage.evaluate(async () => (await (await fetch('/api/auth/session')).json()).user.email), 'browser-test@example.com');
+  await returningContext.close();
   await page.locator('.loading-panel').waitFor({ state: 'hidden' });
   assert.equal(await page.locator('.connection-error').count(), 0);
-  await page.getByRole('link', { name: 'Аккаунт и выход' }).click();
+  await page.goto(`${base}/?account`);
+  await page.getByRole('heading', { name: 'Ваш аккаунт SCENZA' }).waitFor();
+  assert.match(await page.locator('.scenza-header-actions').innerText(), /browser-test@example.com/);
+  assert.equal(await page.locator('.scenza-header-actions').getByRole('button', { name: 'Войти', exact: true }).count(), 0);
+  for (const width of [320, 390, 1440]) {
+    await page.setViewportSize({ width, height: 780 });
+    assert.equal(await page.getByRole('dialog').evaluate(element => {
+      const rect = element.getBoundingClientRect();
+      return rect.top >= 0 && rect.bottom <= innerHeight && element.scrollWidth <= element.clientWidth + 1;
+    }), true, `account dialog fits at ${width}`);
+    await page.screenshot({ path: path.join(screenshots, `account-${width}.png`) });
+  }
   await page.getByRole('button', { name: 'Выйти из аккаунта' }).click();
   await page.getByRole('heading', { name: 'Вход в систему' }).waitFor();
   const storage = await page.evaluate(() => ({ ...localStorage }));
   assert.equal(JSON.stringify(storage).includes('sample-password'), false);
   assert.equal(JSON.stringify(storage).includes('scena_session'), false);
+  let releaseLogin, markStarted;
+  const loginGate = new Promise(resolve => { releaseLogin = resolve; });
+  const loginStarted = new Promise(resolve => { markStarted = resolve; });
+  await page.route('**/api/auth/email/start', async route => {
+    markStarted();
+    await loginGate;
+    await route.fallback();
+  });
+  await page.locator('#scenza-email').fill('browser-test@example.com');
+  await page.locator('#scenza-password').fill('sample-password');
+  await page.getByRole('dialog').getByRole('button', { name: 'Войти', exact: true }).click();
+  await loginStarted;
+  await page.keyboard.press('Escape');
+  releaseLogin();
+  await page.locator('.scenza-header-actions .scenza-account-button').waitFor();
+  assert.match(await page.locator('.scenza-header-actions').innerText(), /browser-test@example.com/);
+  assert.equal(new URL(page.url()).pathname, '/');
   assert.deepEqual(errors, []);
   console.log('PASS: email registration with injected delivery, OTP confirmation, session cookie, isolated studio, logout, no console errors');
+} catch (error) {
+  console.error('Browser state:', await page.locator('dialog[open]').innerText().catch(() => page.url()));
+  await page.screenshot({ path: path.join(screenshots, 'auth-failure.png') });
+  throw error;
 } finally {
   await browser.close();
   await Promise.all([disabled, connected].map(server => new Promise(resolve => server.close(resolve))));

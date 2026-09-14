@@ -10,9 +10,10 @@ const accepted = { termsAccepted: true, dataConsent: true };
 const owner = '963921711';
 const DAY = 86400000;
 async function fixture(t, extra = {}) {
+  await fs.mkdir(path.resolve('tmp'), { recursive: true });
   const dataDir = await fs.mkdtemp(path.resolve('tmp/bot-account-test-'));
   let clock = Date.UTC(2026, 8, 13);
-  const options = { dataDir, now: () => clock, ownerTelegramIds: [owner], botRegistrationEnabled: true, ...extra };
+  const options = { dataDir, telegramBotUsername: 'SCENZA_BOT', telegramMembership: async () => true, now: () => clock, ownerTelegramIds: [owner], botRegistrationEnabled: true, ...extra };
   const auth = await createAuth(options);
   t.after(async () => {
     assert.ok(dataDir.startsWith(`${path.resolve('tmp')}${path.sep}bot-account-test-`));
@@ -40,6 +41,33 @@ test('bot registration is explicit, has no running trial and never grants owner 
   await assert.rejects(disabled.register(1), /Регистрация/);
 });
 
+test('Windows snapshot rename retries transient locks and preserves saved accounts on permanent failure', { skip: process.platform !== 'win32' }, async t => {
+  const f = await fixture(t);
+  await f.register(101);
+  const rename = fs.rename.bind(fs);
+  let attempts = 0;
+  const mocked = t.mock.method(fs, 'rename', async (...args) => {
+    if (++attempts <= 2) throw Object.assign(new Error('temporarily locked'), { code: 'EPERM' });
+    return rename(...args);
+  });
+  const user = await f.register(102);
+  assert.equal(user.telegramUserId, '102');
+  assert.equal(attempts, 3);
+  const accountsFile = path.join(f.dataDir, 'accounts.json');
+  const saved = await fs.readFile(accountsFile, 'utf8');
+  assert.equal(JSON.parse(saved).accounts[1].telegramUserId, '102');
+  attempts = 0;
+  mocked.mock.mockImplementation(async () => {
+    attempts++;
+    throw Object.assign(new Error('still locked'), { code: 'EBUSY' });
+  });
+  await assert.rejects(f.register(103), { code: 'EBUSY' });
+  assert.equal(attempts, 4);
+  assert.equal(await fs.readFile(accountsFile, 'utf8'), saved);
+  assert.equal((await f.bots.users()).total, 2);
+  assert.deepEqual(await fs.readdir(f.dataDir), ['accounts.json']);
+});
+
 test('owner controls roles and access; grants persist and Telegram replay cannot extend twice', async t => {
   const f = await fixture(t);
   const u = await f.register(101);
@@ -53,12 +81,12 @@ test('owner controls roles and access; grants persist and Telegram replay cannot
   await restarted.bots.grant(owner, u.id, 10, 'grant:1');
   assert.equal((await restarted.bots.user(u.id)).accessUntil, granted.accessUntil);
   await restarted.bots.role(owner, u.id, 'support', 'role:1');
-  assert.equal(await restarted.bots.adminRole(101), 'support');
+  assert.equal(await restarted.bots.adminRole(101), null);
   await assert.rejects(restarted.bots.grant('101', u.id, 1, 'support-write'), /прав/);
   await assert.rejects(restarted.bots.role(owner, u.id, 'owner', 'inject-owner'));
-  await restarted.bots.block(owner, u.id, true, 'block:1');
+  await restarted.bots.block(owner, u.id, true, 'block:1', 'Нарушение условий');
   assert.equal(await restarted.bots.adminRole(101), null);
-  assert.equal((await restarted.bots.user(u.id)).accessActive, false);
+  assert.equal((await restarted.bots.user(u.id)).accessActive, true);
   await restarted.bots.grant(owner, u.id, 2, 'grant:2');
   assert.equal((await restarted.bots.user(u.id)).blocked, true);
 });
@@ -90,7 +118,7 @@ test('promo capacity is atomic, one use per account, stored without raw code, re
   await assert.rejects(restarted.bots.redeem(winner, expired.code, 'expire:redeem'));
 });
 
-test('verified Telegram login binds bot account, starts trial once, and block revokes web sessions', async t => {
+test('verified Telegram login binds bot account, starts trial once, and blocked users retain their web sessions', async t => {
   const { privateKey, publicKey } = generateKeyPairSync('rsa', { modulusLength: 2048 });
   const f = await fixture(t, { legalReady: true, telegramClientId: '123456', fetch: async () => new Response(JSON.stringify({ keys: [{ ...publicKey.export({ format: 'jwk' }), kid: 'test', alg: 'RS256' }] })) });
   const original = await f.register(101);
@@ -114,17 +142,19 @@ test('verified Telegram login binds bot account, starts trial once, and block re
   const first = await login();
   assert.equal(first.status, 200);
   assert.equal(first.body.user.id, original.id);
+  assert.equal(first.body.user.telegramUserId, '101');
   assert.equal(Date.parse(first.body.user.trialStartedAt), f.clock());
   assert.equal(Date.parse(first.body.user.trialEndsAt), f.clock() + 7 * DAY);
   assert.equal((await f.bots.users()).total, 1);
   f.advance(1);
   assert.equal((await login()).body.user.trialEndsAt, first.body.user.trialEndsAt);
   assert.equal((await login(102)).status, 401);
-  await f.bots.block(owner, original.id, true, 'block:web');
-  assert.equal((await call('/session')).body.user, null);
-  assert.equal((await login()).status, 403);
+  assert.equal((await login(null)).status, 401);
+  await f.bots.block(owner, original.id, true, 'block:web', 'Нарушение условий');
+  assert.equal((await call('/session')).body.user.id, original.id);
+  assert.equal((await login()).body.user.blocked, true);
   await f.bots.block(owner, original.id, false, 'unblock:web');
-  assert.equal((await call('/session')).body.user, null);
+  assert.equal((await call('/session')).body.user.id, original.id);
   assert.equal((await login()).status, 200);
   await call('/logout', {});
   const events = (await f.bots.logs({ userId: original.id })).map(item => item.event);
@@ -155,9 +185,17 @@ test('password reset rejects an old-password login already queued behind its pen
   const server = http.createServer((req, res) => f.handle(req, res, new URL(req.url, 'http://localhost').pathname));
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
+  const jar = new Map();
   async function call(route, body) {
-    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/auth${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    return { status: response.status, body: await response.json() };
+    const response = await fetch(`http://127.0.0.1:${server.address().port}/api/auth${route}`, { method: 'POST', headers: { 'Content-Type': 'application/json', Cookie: [...jar].map(([k,v]) => `${k}=${v}`).join('; ') }, body: JSON.stringify(body) });
+    for (const c of response.headers.getSetCookie()) { const [k,v] = c.split(';')[0].split('='); jar.set(k,v); }
+    const result = { status: response.status, body: await response.json() };
+    if (result.body.telegramRequired) {
+      const token = new URL(result.body.url).searchParams.get('start').slice(6);
+      await f.bots.beginWebsiteLogin(token, 4242); await f.bots.confirmWebsiteLogin(token, 4242);
+      return call(route, body);
+    }
+    return result;
   }
   const email = 'race@example.com', oldPassword = 'old-password-123', newPassword = 'new-password-456';
   const start = await call('/email/start', { mode: 'register', email, password: oldPassword, ...accepted });
@@ -198,5 +236,6 @@ test('bot usernames are searchable without becoming account identity; HEAD activ
   const other = await f.bots.registerTelegram({ id: 102, name: 'Other', username: 'sample_username' }, accepted, 'username:other');
   assert.notEqual(other.id, user.id);
   await f.bots.recordActivity(user.id, 'studio.read', { method: 'HEAD', route: '/media/:file', status: 200 });
-  assert.equal((await f.bots.logs({ userId: user.id }))[0].detail.method, 'HEAD');
+  assert.ok((await f.bots.user(user.id)).lastActiveAt);
+  assert.equal((await f.bots.logs({ userId: user.id })).some(event => event.event === 'studio.read'), false);
 });

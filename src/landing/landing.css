@@ -1,7 +1,8 @@
 @font-face { font-family: Manrope; font-style: normal; font-weight: 400 800; font-display: swap; src: url('/fonts/manrope-cyrillic.woff2') format('woff2'); unicode-range: U+0301,U+0400-045F,U+0490-0491,U+04B0-04B1,U+2116; }
 @font-face { font-family: Manrope; font-style: normal; font-weight: 400 800; font-display: swap; src: url('/fonts/manrope-latin.woff2') format('woff2'); unicode-range: U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD; }
 
-.scenza-landing { font-family: Manrope, 'Segoe UI', sans-serif; background: var(--bg); color: #f4f7fa; overflow: clip; }
+.scenza-landing { position: relative; isolation: isolate; font-family: Manrope, 'Segoe UI', sans-serif; background: var(--bg); color: #f4f7fa; overflow: clip; }
+.scenza-particle-background { position: fixed; inset: 0; z-index: -1; width: 100%; height: 100lvh; pointer-events: none; }
 .scenza-landing p { color: var(--muted); }
 .scenza-landing h1, .scenza-landing h2, .scenza-landing h3 { color: #f4f7fa; }
 .scenza-container { width: min(1240px, calc(100% - 80px)); margin-inline: auto; }
@@ -30,18 +31,38 @@
 .scenza-header-actions .scenza-button { min-height: 38px; padding: 9px 18px; font-size: .75rem; }
 .scenza-menu-button { display: none; margin-left: auto; width: 44px; height: 44px; align-items: center; justify-content: center; border: 1px solid #29424a; border-radius: 5px; }
 .scenza-mobile-nav { display: none; }
-.scenza-hero { position: relative; isolation: isolate; padding: 62px 0 54px; border-bottom: 1px solid #152a30; }
-.scenza-hero-paths.scenza-background-paths { position: absolute; inset: -60px 0 -50px; z-index: -1; pointer-events: none; opacity: .24; }
+.scenza-hero { position: relative; isolation: isolate; padding: 62px 0 0; overflow: hidden; }
+.scenza-hero::before { content: ''; position: absolute; inset: 0; z-index: -2; pointer-events: none; background: radial-gradient(ellipse at 73% 35%, #17403d77, transparent 57%), radial-gradient(ellipse at 74% 110%, #02090ccc, transparent 48%), linear-gradient(115deg, #061114, #081b1e 75%, #061316); }
+.scenza-hero-paths.scenza-background-paths { position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: .65; }
+.scenza-hero::before, .scenza-hero-paths { mask-image: linear-gradient(to bottom, #000 65%, transparent 100%); }
 .scenza-hero-grid { display: grid; grid-template-columns: minmax(0, .87fr) minmax(0, 1.13fr); align-items: center; gap: 36px; }
-.scenza-hero-copy { position: relative; z-index: 1; padding-bottom: 15px; }
+.scenza-hero-copy { position: relative; z-index: 2; padding-bottom: 15px; }
 .scenza-hero-title { font-size: clamp(2.75rem, 4.65vw, 4rem); font-weight: 800; letter-spacing: -.037em; line-height: 1.13; margin: 0; max-width: 560px; }
 .scenza-hero-copy > p { font-size: 1rem; line-height: 1.8; max-width: 440px; margin-top: 26px; }
 .scenza-hero-buttons { display: flex; gap: 13px; margin-top: 29px; align-items: center; flex-wrap: wrap; }
 .scenza-hero-buttons .scenza-button { min-height: 48px; font-size: .875rem; padding-inline: 20px; }
 .scenza-hero-buttons .scenza-button-primary { box-shadow: 0 6px 26px #23d6bd18; }
-.scenza-hero-product { --hero-rest: perspective(1400px) rotateY(-5deg) rotateZ(-1deg); position: relative; min-width: 0; transform: var(--hero-rest); transform-origin: center; animation: scenza-hero-turn 1.8s cubic-bezier(.16, 1, .3, 1) .15s both; }
+.scenza-hero-product { --hero-rest: perspective(1400px) rotateY(-5deg) rotateZ(-1deg); --hero-start: perspective(1400px) rotateY(-365deg) rotateZ(-1deg); position: relative; min-width: 0; transform: var(--hero-rest); transform-origin: center; animation: scenza-hero-turn 1.8s cubic-bezier(.16, 1, .3, 1) .15s both; }
 .scenza-hero-product::before { content: ''; position: absolute; inset: 12% 5% 18%; z-index: -1; background: #0eb79f; filter: blur(90px); opacity: .08; pointer-events: none; }
 .scenza-hero .product-demo { border-color: #276c70; box-shadow: 0 17px 46px #00000055; }
+.scenza-hero-robot { position: relative; z-index: 1; min-width: 0; width: 100%; height: clamp(490px, 43vw, 640px); isolation: isolate; }
+.scenza-robot-spotlight { position: absolute; inset: 0; z-index: -1; background: radial-gradient(ellipse at 50% 48%, #35ead02b, #18ad9f0d 35%, transparent 65%); pointer-events: none; }
+.scenza-robot-scene, .scenza-robot-viewport, .scenza-robot-canvas { width: 100%; height: 100%; }
+.scenza-robot-scene { opacity: 0; transform: scale(1.2312); transform-origin: center; transition: opacity .6s ease-out; mask-image: linear-gradient(to bottom, #000 62%, transparent 90%); }
+.scenza-hero-robot[data-ready=true] .scenza-robot-scene { opacity: 1; }
+.scenza-robot-canvas canvas { display: block; touch-action: pan-y; filter: brightness(1.22) contrast(.97); }
+.scenza-robot-status { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; text-align: center; }
+.scenza-robot-status p { margin: 0; color: #aac7c9; font-size: .85rem; }
+.scenza-robot-loader { width: 30px; height: 30px; border: 2px solid #35ead029; border-top-color: var(--accent); border-radius: 50%; animation: scenza-robot-loading .9s linear infinite; }
+.scenza-robot-control { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 44px; padding: 10px 18px; color: var(--accent); background: #0a2429; border: 1px solid #32746e; border-radius: 6px; font: inherit; font-size: .85rem; cursor: pointer; }
+.scenza-robot-control:hover { background: #103731; }
+.scenza-robot-control:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+@keyframes scenza-robot-loading { to { transform: rotate(360deg); } }
+.scenza-spotlight-layer { position: fixed; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; }
+.scenza-cursor-spotlight { position: absolute; left: -160px; top: -160px; width: 320px; height: 320px; border-radius: 50%; opacity: 0; background: radial-gradient(circle, #b9ffed4d 0%, #64ebd52e 20%, #24bda80d 48%, transparent 72%); transition: opacity .18s ease-out; will-change: transform; }
+@media (max-width: 950px) { .scenza-hero-robot { height: 480px; max-width: 650px; margin-inline: auto; } .scenza-robot-spotlight { background-position: center; } }
+@media (max-width: 650px) { .scenza-hero-robot { height: 420px; } }
+@media (prefers-reduced-motion: reduce) { .scenza-robot-scene { transition: none; } .scenza-robot-loader { animation: none; } }
 .scenza-section-title { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 25px; }
 .scenza-section-title h2 { font-size: clamp(1.6rem, 2.25vw, 2.15rem); line-height: 1.25; font-weight: 750; letter-spacing: -.025em; }
 .scenza-section-title p { font-size: .86rem; line-height: 1.65; margin-top: 9px; }
@@ -50,7 +71,12 @@
 .scenza-examples-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)) minmax(220px, 1.24fr); gap: 14px; }
 .scenza-example { display: block; position: relative; aspect-ratio: .65; overflow: hidden; min-width: 0; border-radius: 7px; padding: 0; border: 1px solid #2a4650; text-align: left; background: #11222a; }
 .scenza-example:hover { border-color: var(--accent); }
-.scenza-example > img { width: 100%; height: 100%; object-fit: cover; }
+.scenza-example-media { position: relative; width: 100%; height: 100%; }
+.scenza-example video { display: block; width: 100%; height: 100%; object-fit: contain; background: #03090d; }
+.scenza-example-start { position: absolute; inset: 0; width: 100%; text-align: left; }
+.scenza-example-start:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+.scenza-example-expand { position: absolute; top: 9px; right: 9px; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 5px; color: white; background: #061119b8; }
+.scenza-example-error { position: absolute; inset: 40% 10px auto; padding: 10px; background: #061119ed; color: #fff !important; font-size: 12px; }
 .scenza-duration { position: absolute; right: 9px; top: 9px; font-size: .62rem; line-height: 1; padding: 5px 6px; border-radius: 3px; background: #091721cf; font-variant-numeric: tabular-nums; }
 .scenza-example-play { position: absolute; left: 50%; top: 42%; transform: translate(-50%,-50%); width: 41px; height: 41px; display: grid; place-items: center; border-radius: 50%; background: #08161ca1; border: 1px solid #d9f0ed9c; color: #f4fffd; }
 .scenza-example:hover .scenza-example-play { color: var(--accent); border-color: var(--accent); background: #061c22d9; }
@@ -64,7 +90,7 @@
 .scenza-platforms span { display: flex; align-items: center; min-height: 36px; padding: 8px 10px; border: 1px solid #24414a; background: #09171e; border-radius: 4px; font-size: .64rem; color: #dcecee; white-space: nowrap; }
 .scenza-format-note { display: flex; align-items: center; gap: 10px; margin-top: 18px; color: #98b1b8; font-size: .65rem; }
 .scenza-format-note i { width: 3px; height: 3px; border-radius: 50%; background: #3a5c66; }
-.scenza-demo-section { border-top: 1px solid #173039; border-bottom: 1px solid #173039; padding-block: 45px 34px; background: #07151a; }
+.scenza-demo-section { border-top: 1px solid #173039; border-bottom: 1px solid #173039; padding-block: 45px 34px; background: #07151a99; }
 .scenza-demo-section .scenza-section-title h2 { font-size: clamp(1.6rem, 2.1vw, 2rem); }
 .scenza-demo-section .product-demo { border-color: #276066; box-shadow: 0 15px 42px #00000035; }
 .scenza-feature-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 23px; padding-top: 29px; }
@@ -135,7 +161,7 @@
 .scenza-demo-link { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; margin-top: 9px; color: var(--accent); font-size: .79rem; }
 .scenza-video-dialog { width: min(880px, calc(100% - 32px)); padding: 25px; }
 .scenza-video-dialog h2 { padding-right: 24px; }
-.scenza-video-dialog video { display: block; width: 100%; max-height: 65dvh; aspect-ratio: 16 / 9; object-fit: contain; background: #03090d; border-radius: 5px; margin-top: 17px; }
+.scenza-video-dialog video { display: block; width: 100%; max-height: 65dvh; object-fit: contain; background: #03090d; border-radius: 5px; margin-top: 17px; }
 .scenza-video-dialog > p { color: #9fb7c2; font-size: .73rem; line-height: 1.6; margin-top: 14px; }
 .scenza-video-dialog a { text-decoration: underline; text-underline-offset: 3px; }
 .scenza-information { padding-top: 14px; }
@@ -144,7 +170,7 @@
 .scenza-information > .scenza-button { margin-top: 22px; }
 .scenza-loading { min-height: 100vh; display: grid; place-items: center; color: #45f0d6; font: 700 24px Manrope, sans-serif; letter-spacing: .05em; background: #061013; }
 
-@media (min-width: 1600px) { .scenza-hero { padding-block: 85px 70px; } .scenza-hero-title { font-size: 4.3rem; } }
+@media (min-width: 1600px) { .scenza-hero { padding-block: 85px 0; } .scenza-hero-title { font-size: 4.3rem; } }
 @media (max-width: 1200px) {
   .scenza-container { width: calc(100% - 52px); }
   .scenza-header-inner { gap: 18px; }
@@ -167,15 +193,18 @@
   .scenza-desktop-nav { display: none; }
   .scenza-header-actions { margin-left: auto; }
   .scenza-menu-button { display: inline-flex; margin-left: 0; }
-  .scenza-mobile-nav { display: flex; flex-direction: column; gap: 4px; position: absolute; left: 0; right: 0; padding: 17px 26px 24px; background: #0a1d25; border-bottom: 1px solid #37555c; box-shadow: 0 20px 30px #0005; }
-  .scenza-mobile-nav > a { padding: 12px 8px; font-size: .95rem; }
-  .scenza-mobile-nav > div { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .scenza-mobile-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; position: absolute; left: 0; right: 0; padding: 8px 26px 16px; background: #061013; border-bottom: 1px solid #163039; }
+  .scenza-mobile-nav > a { display: flex; align-items: center; min-height: 44px; padding: 8px 0; font-size: .88rem; }
+  .scenza-mobile-nav > div { grid-column: 1 / -1; display: grid; grid-template-columns: auto repeat(2, minmax(0, 1fr)); align-items: center; gap: 8px; margin-top: 12px; }
+  .scenza-mobile-nav .scenza-language { padding: 0; border: 0; }
+  .scenza-mobile-nav > div > .scenza-button { min-width: 0; padding-inline: 12px; }
+  .scenza-mobile-nav .scenza-language button { min-width: 44px; min-height: 44px; background: transparent; }
   .scenza-hero { padding-top: 44px; }
   .scenza-hero-grid { grid-template-columns: minmax(0,1fr); gap: 39px; }
   .scenza-hero-copy { max-width: 600px; padding-bottom: 0; }
   .scenza-hero-title { max-width: 600px; font-size: 3.55rem; }
   .scenza-hero-copy > p { max-width: 580px; }
-  .scenza-hero-product { width: min(730px, 100%); margin-inline: auto; --hero-rest: perspective(1400px) rotateY(0deg) rotateZ(0deg); }
+  .scenza-hero-product { width: min(730px, 100%); margin-inline: auto; --hero-rest: perspective(1400px) rotateY(0deg) rotateZ(0deg); --hero-start: perspective(1400px) rotateY(-360deg) rotateZ(0deg); }
   .scenza-examples-grid { grid-template-columns: repeat(4,minmax(0,1fr)); }
   .scenza-platform-panel { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 1.2fr; gap: 7px 28px; padding: 22px; }
   .scenza-platform-panel h3 { max-width: 260px; }
@@ -200,10 +229,8 @@
   .scenza-brand .logo-word small { font-size: .52rem; }
   .scenza-header-actions { display: none; }
   .scenza-menu-button { margin-left: auto; }
-  .scenza-mobile-nav { padding: 15px 18px 22px; }
-  .scenza-mobile-nav .scenza-language { margin-right: auto; }
-  .scenza-mobile-nav .scenza-language button { min-width: 36px; min-height: 36px; }
-  .scenza-hero { padding-block: 39px 35px; }
+  .scenza-mobile-nav { padding-inline: 18px; }
+  .scenza-hero { padding-block: 24px 0; }
   .scenza-hero-title { font-size: clamp(2.25rem, 9.5vw, 3rem); line-height: 1.16; letter-spacing: -.032em; }
   .scenza-hero-copy > p { font-size: .9rem; line-height: 1.75; margin-top: 20px; }
   .scenza-hero-buttons { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 24px; }
@@ -277,9 +304,30 @@
 .scenza-auth-period { display: grid; gap: 7px; margin-top: 13px; }
 .scenza-auth-period select { min-height: 44px; width: 100%; padding: 8px 10px; border: 1px solid #31505c; border-radius: 5px; color: #eefaf7; background: #09171e; font: inherit; }
 @keyframes scenza-hero-turn {
-  0% { opacity: 0; transform: perspective(1400px) translateY(35px) rotateY(-365deg) rotateZ(-9deg) scale(.88); }
+  0% { opacity: 0; transform: var(--hero-start) translateY(24px); }
   25% { opacity: 1; }
-  72% { transform: perspective(1400px) translateY(-5px) rotateY(8deg) rotateZ(1deg) scale(1.01); }
-  100% { opacity: 1; transform: var(--hero-rest); }
+  100% { opacity: 1; transform: var(--hero-rest) translateY(0); }
 }
 @media (prefers-reduced-motion: reduce) { .scenza-hero-product { animation: none; } .scenza-faq summary > svg { transition: none; } }
+
+.scenza-workflow { display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 36px 64px; padding-block: 64px 42px; }
+.scenza-workflow-intro h2 { max-width: 20ch; font-size: clamp(1.6rem, 2.25vw, 2.15rem); font-weight: 750; line-height: 1.25; letter-spacing: -.025em; }
+.scenza-workflow-intro p { max-width: 48ch; margin-top: 18px; font-size: .9rem; line-height: 1.75; }
+.scenza-workflow-steps { display: grid; gap: 24px; margin: 0; padding: 0; list-style: none; }
+.scenza-workflow-steps li { display: flex; align-items: start; gap: 18px; min-width: 0; }
+.scenza-workflow-number { flex-shrink: 0; color: var(--accent); font-size: .85rem; font-variant-numeric: tabular-nums; line-height: 1.8; }
+.scenza-workflow h3 { font-size: 1rem; line-height: 1.5; font-weight: 650; }
+.scenza-workflow-steps p { margin-top: 7px; font-size: .85rem; line-height: 1.7; }
+.scenza-workflow-value { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: 18px 64px; padding-top: 28px; border-top: 1px solid #24414a; }
+.scenza-workflow-value p { max-width: 70ch; font-size: .9rem; line-height: 1.75; }
+.scenza-workflow-value .scenza-workflow-note { margin-top: 14px; color: #b6cad2; font-size: .8rem; }
+@media (max-width: 900px) {
+  .scenza-workflow, .scenza-workflow-value { grid-template-columns: minmax(0, 1fr); gap: 28px; }
+  .scenza-workflow-intro h2 { max-width: 30ch; }
+  .scenza-workflow-intro p { max-width: 65ch; }
+}
+@media (max-width: 650px) {
+  .scenza-workflow { padding-block: 42px 28px; }
+  .scenza-workflow-steps li { gap: 14px; }
+  .scenza-workflow-value { gap: 12px; }
+}

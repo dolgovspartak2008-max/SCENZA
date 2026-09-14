@@ -1,0 +1,23 @@
+html:has(.scenza-landing) { scrollbar-gutter: stable; }
+body:has(.scenza-page-loader) { overflow: hidden; }
+.scenza-page-loader { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; padding: 24px; background: radial-gradient(ellipse at 50% 42%, #0d272a 0%, #061013 60%); color: #f4f7fa; font-family: Manrope, 'Segoe UI', sans-serif; opacity: 1; transition: opacity 450ms ease; outline: none; }
+.scenza-page-loader[data-closing=true] { opacity: 0; pointer-events: none; }
+.scenza-page-loader-content { display: flex; flex-direction: column; align-items: center; text-align: center; }
+.scenza-page-loader-edit { position: relative; width: min(300px, 75vw); margin-bottom: 38px; padding-block: 12px; overflow: hidden; color: #45f0d6; }
+.scenza-page-loader-frames { display: flex; align-items: center; gap: 12px; height: 116px; }
+.scenza-page-loader-frame { display: flex; flex: 1; min-width: 0; height: 72px; align-items: center; justify-content: center; gap: 5px; border: 1px solid #28504f; border-radius: 8px; background: #0c2023; opacity: .55; }
+.scenza-page-loader-frame-main { flex: 1.4; height: 104px; color: #80d9cc; border-color: #44877c; opacity: 1; animation: scenza-page-loader-frame 3s ease-in-out infinite; }
+.scenza-page-loader-frame svg { width: 48px; height: 48px; }
+.scenza-page-loader-frame i { width: 3px; height: 16px; border-radius: 2px; background: #4a8d83; }
+.scenza-page-loader-frame i:nth-child(2) { height: 32px; }
+.scenza-page-loader-frame i:nth-child(3) { height: 24px; }
+.scenza-page-loader-timeline { display: flex; gap: 5px; height: 12px; margin-top: 16px; }
+.scenza-page-loader-timeline span { flex: 1; border-radius: 2px; background: #204b49; }
+.scenza-page-loader-timeline span:nth-child(3n) { flex: 1.6; background: #326b61; }
+.scenza-page-loader-playhead { position: absolute; top: 4px; bottom: 8px; left: 0; width: 100%; border-left: 1px solid #72d7c6; opacity: .75; animation: scenza-page-loader-scan 3s ease-in-out infinite; pointer-events: none; }
+.scenza-page-loader-playhead::before { content: ''; position: absolute; top: 0; left: -3px; width: 5px; height: 5px; border-radius: 50%; background: #72d7c6; }
+.scenza-page-loader-brand { font-size: clamp(30px, 7vw, 42px); font-weight: 800; letter-spacing: .14em; text-indent: .14em; line-height: 1.2; }
+.scenza-page-loader-content p { margin: 14px 0 0; color: #a4b8bf; font-size: 13px; line-height: 1.6; }
+@keyframes scenza-page-loader-scan { 0% { transform: translateX(0); opacity: 0; } 12%, 82% { opacity: .75; } 100% { transform: translateX(100%); opacity: 0; } }
+@keyframes scenza-page-loader-frame { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+@media (prefers-reduced-motion: reduce) { .scenza-page-loader { transition-duration: 150ms; } .scenza-page-loader-playhead, .scenza-page-loader-frame-main { animation: none; } .scenza-page-loader-playhead { transform: translateX(50%); } }

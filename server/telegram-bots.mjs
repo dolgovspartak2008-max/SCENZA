@@ -3,6 +3,8 @@ import { isIP } from 'node:net';
 import { existsSync, readFileSync, mkdirSync, writeFileSync, renameSync } from 'node:fs';
 import path from 'node:path';
 import timers from 'node:timers/promises';
+import { createTelegramAdmin } from './telegram-admin.mjs';
+import { createPhotoSender } from './telegram-photo.mjs';
 
 const button = (text, callback_data) => ({ text, callback_data });
 const clean = value => String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 250);
@@ -26,13 +28,15 @@ function publicSite(value) {
 
 export function createTelegramBots({ clientToken, adminToken, service, siteUrl = '', registrationEnabled = false, fetch: fetcher = globalThis.fetch, now = Date.now, stateFile } = {}) {
   const site = publicSite(siteUrl);
-  const tokens = { client: clientToken, admin: adminToken };
+  const singleBot = !!clientToken && (!adminToken || adminToken === clientToken);
+  const tokens = { client: clientToken, admin: singleBot ? clientToken : adminToken };
+  const botTypes = singleBot ? ['client'] : Object.keys(tokens);
   const pending = new Map();
   const completed = new Map();
   const redeemWaiting = new Map();
   const offsets = { client: 0, admin: 0 };
   const health = { client: { running: false, error: null }, admin: { running: false, error: null } };
-  let controller, loops = [], starting;
+  let controller, loops = [], starting, notificationTimer, notifying;
   if (stateFile && existsSync(stateFile)) {
     try {
       const saved = JSON.parse(readFileSync(stateFile, 'utf8'));
@@ -74,6 +78,29 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
     }
   }
   const send = (type, id, text, rows = []) => api(type, 'sendMessage', { chat_id: id, text: text.slice(0, 4000), ...(rows.length ? { reply_markup: { inline_keyboard: rows } } : {}) });
+  const sendPhoto = createPhotoSender({ clientToken, adminToken, fetch: fetcher, api });
+  const panel = service.panel ? createTelegramAdmin({ service, send, api, sendPhoto, complete: completedReply, now }) : null;
+  const supportWaiting = new Map();
+  async function checkNotifications() {
+    if (!panel || !service.ownerTelegramId || !service.panel.alerts) return;
+    if (notifying) return notifying;
+    notifying = (async () => {
+      const ownerId = service.ownerTelegramId;
+      if (await service.adminRole(ownerId) !== 'owner') return;
+      const alerts = await service.panel.alerts(ownerId);
+      let delivered = 0;
+      for (const alert of alerts) {
+        if (delivered >= 10) break;
+        if (!await service.panel.claimAlert(ownerId, alert.key, { cooldownMs: alert.cooldownMs })) continue;
+        try { await send('admin', ownerId, alert.text, [[button('Панель SCENZA', 'adm:home')]]); delivered++; }
+        catch (error) {
+          if (error.telegramCode) await service.panel.releaseAlert(ownerId, alert.key);
+          throw error;
+        }
+      }
+    })();
+    try { await notifying; } finally { notifying = null; }
+  }
   async function completedReply(type, actor, key, text, rows = []) {
     for (const [event, item] of completed) if (item.expires <= now()) completed.delete(event);
     if (completed.size >= 10000) completed.delete(completed.keys().next().value);
@@ -97,36 +124,76 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
   function clientRows() {
     return [[button('Мой доступ', 'status')], [site ? { text: 'Перейти на сайт', url: site } : button('Перейти на сайт', 'site')],
       ...(registrationEnabled ? [[button('Зарегистрироваться', 'register')]] : []),
-      [button('Активировать промокод', 'redeem')], [button('Помощь', 'help')]];
+      [button('Активировать промокод', 'redeem')], [button('Помощь', 'help')], ...(panel ? [[button('Поддержка', 'support')]] : [])];
   }
   function access(user) {
     if (!user) return 'Аккаунт ещё не зарегистрирован.';
-    const active = !user.blocked && user.accessActive;
-    return [`Аккаунт: ${clean(user.name)}`, `Доступ: ${user.blocked ? 'заблокирован' : active ? 'активен' : 'неактивен'}`,
+    const active = user.accessActive;
+    return [`Аккаунт: ${clean(user.name)}`, `Доступ: ${active ? 'активен' : 'неактивен'}`, ...(user.blocked ? [`Создание роликов заблокировано. Причина: ${clean(user.blockReason) || 'обратитесь в поддержку'}. Вход в аккаунт доступен.`] : []),
       user.trialEndsAt ? `Пробный период до: ${date(user.trialEndsAt)}` : 'Пробные 7 дней начнутся при первом входе на сайт.', `Предоставленный доступ до: ${date(user.accessUntil)}`,
       'Автоматических списаний нет. Оплата пока не подключена.'].join('\n');
   }
   async function client(update, person, text, data) {
     const id = person.id, key = `client:${update.update_id}`;
     const command = text.split(/\s/)[0].split('@')[0].toLowerCase();
+    if (panel && (data === 'support' || command === '/support')) {
+      for (const [actor, expires] of supportWaiting) if (expires <= now()) supportWaiting.delete(actor);
+      if (supportWaiting.size >= 10000) supportWaiting.delete(supportWaiting.keys().next().value);
+      supportWaiting.set(id, now() + 600000);
+      return send('client', id, 'Напишите вопрос в поддержку SCENZA (до 3000 символов). Ответ появится здесь и в вашем аккаунте на сайте.', [[button('Отмена', 'cancel')]]);
+    }
+    if (supportWaiting.get(id) > now() && !data && !text.startsWith('/')) {
+      if (!text.trim() || text.length > 3000) return send('client', id, 'Сообщение должно содержать 1–3000 символов.');
+      const ticket = await service.panel.createSupport(id, text, key);
+      supportWaiting.delete(id);
+      return completedReply('client', id, key, `Обращение ${ticket.id} принято. Ответ придёт в Telegram и появится на сайте.`, clientRows());
+    }
+    if (data === 'cancel' || text.startsWith('/')) supportWaiting.delete(id);
+    const loginToken = command === '/start' && !data ? text.trim().split(/\s+/)[1]?.match(/^login_([A-Za-z0-9_-]{43})$/)?.[1] : null;
+    if (loginToken) {
+      const request = await service.beginWebsiteLogin(loginToken, id);
+      const code = session({ actor: id, kind: 'websiteLogin', loginToken, verificationOnly: request.verificationOnly });
+      const action = request.registrationRequired ? button('Зарегистрироваться и войти', `webregister:${code}`) : button(request.verificationOnly ? 'Проверить подписку и подтвердить' : 'Подтвердить вход', `weblogin:${code}`);
+      return send('client', id, `${request.verificationOnly ? `Подпишитесь на MediaFlowTech и подтвердите Telegram для регистрации по email ${clean(request.email)}. Затем вернитесь на сайт и подтвердите эту почту.` : request.registrationRequired ? 'Аккаунта ещё нет. Для регистрации нужна подписка на MediaFlowTech.' : 'Подтвердите вход в SCENZA с вашим Telegram-аккаунтом.'}\nПодтверждайте, только если вы сами начали вход на сайте. Не подтверждайте ссылки, присланные другими людьми. Ссылка действует 5 минут.`, [[{ text: 'Подписаться на MediaFlowTech', url: 'https://t.me/MediaFlowTech' }], [action], [button('Отмена', 'cancel')]]);
+    }
+    if (data?.startsWith('weblogin:')) {
+      const item = consume(data.slice(9), id, 'websiteLogin');
+      if (!item) return send('client', id, 'Кнопка недействительна. Начните вход на сайте заново.');
+      try { await service.confirmWebsiteLogin(item.loginToken, id); }
+      catch (error) { pending.set(data.slice(9), item); throw error; }
+      return completedReply('client', id, key, item.verificationOnly ? 'Telegram и подписка подтверждены. Вернитесь на сайт и завершите регистрацию по email.' : 'Вход подтверждён. Вернитесь во вкладку сайта, где вы начали вход: студия откроется автоматически.');
+    }
     if (command === '/id') return send('client', id, `Ваш Telegram ID: ${id}`);
     if (command === '/privacy' || data === 'privacy') return send('client', id, privacyNotice, clientRows());
     if (command === '/terms' || data === 'terms') return send('client', id, termsNotice, clientRows());
     if (command === '/site' || data === 'site') return send('client', id, site ? 'Откройте SCENZA и выберите вход через Telegram.' : 'Адрес сайта ещё настраивается. Ссылка появится после подключения домена.', clientRows());
     if (command === '/help' || data === 'help') return send('client', id, 'SCENZA: регистрация, статус доступа и промокоды. Работа с проектами — на сайте. Пробные 7 дней начнутся при первом входе на сайт. Оплата и автосписания не подключены.\nПоддержка: dolgovspartak2008@gmail.com\n/id — ваш Telegram ID\n/terms — условия\n/privacy — обработка данных.', clientRows());
-    if (data === 'register' || data?.startsWith('terms:') || data?.startsWith('consent:')) {
+    if (data === 'register' || data?.startsWith('webregister:') || data?.startsWith('terms:') || data?.startsWith('consent:')) {
       if (!registrationEnabled) return send('client', id, 'Регистрация пока не включена: ожидаем настройки сайта и юридических документов.');
-      if (data === 'register') {
-        const code = session({ actor: id, kind: 'terms' });
+      if (data === 'register' || data.startsWith('webregister:')) {
+        const item = data === 'register' ? null : consume(data.slice(12), id, 'websiteLogin');
+        if (data !== 'register' && !item) return send('client', id, 'Кнопка недействительна. Начните вход на сайте заново.');
+        if (item) await service.beginWebsiteLogin(item.loginToken, id);
+        const code = session({ actor: id, kind: 'terms', ...(item ? { loginToken: item.loginToken } : {}) });
         return send('client', id, `Шаг 1 из 2. Условия использования бота.\n\n${termsNotice}`, [...(site ? [[{ text: 'Документы сайта', url: `${site}/legal/terms` }]] : []), [button('Принимаю условия', `terms:${code}`)], [button('Отмена', 'cancel')]]);
       }
       if (data.startsWith('terms:')) {
-        if (!consume(data.slice(6), id, 'terms')) return send('client', id, 'Кнопка недействительна. Начните регистрацию заново.', clientRows());
-        const code = session({ actor: id, kind: 'consent' });
+        const item = consume(data.slice(6), id, 'terms');
+        if (!item) return send('client', id, 'Кнопка недействительна. Начните регистрацию заново.', clientRows());
+        if (item.loginToken) await service.beginWebsiteLogin(item.loginToken, id);
+        const code = session({ actor: id, kind: 'consent', ...(item.loginToken ? { loginToken: item.loginToken } : {}) });
         return send('client', id, `Шаг 2 из 2. Отдельное согласие на обработку данных.\n\n${privacyNotice}\n\nСогласие добровольное. Нажимая кнопку ниже, вы разрешаете указанную обработку для регистрации и обслуживания аккаунта. Без согласия регистрация не завершится.`, [...(site ? [[{ text: 'Согласие на сайте', url: `${site}/legal/consent` }], [{ text: 'Политика на сайте', url: `${site}/legal/privacy` }]] : []), [button('Даю согласие и регистрируюсь', `consent:${code}`)], [button('Отмена', 'cancel')]]);
       }
-      if (!consume(data.slice(8), id, 'consent')) return send('client', id, 'Кнопка недействительна. Начните регистрацию заново.', clientRows());
-      const user = await service.registerTelegram({ id, name: [person.first_name, person.last_name].filter(Boolean).join(' '), username: person.username }, { termsAccepted: true, dataConsent: true }, key);
+      const item = consume(data.slice(8), id, 'consent');
+      if (!item) return send('client', id, 'Кнопка недействительна. Начните регистрацию заново.', clientRows());
+      if (item.loginToken) await service.beginWebsiteLogin(item.loginToken, id);
+      let user;
+      try { user = await service.registerTelegram({ id, name: [person.first_name, person.last_name].filter(Boolean).join(' '), username: person.username }, { termsAccepted: true, dataConsent: true }, key); }
+      catch (error) { pending.set(data.slice(8), item); throw error; }
+      if (item.loginToken) {
+        await service.confirmWebsiteLogin(item.loginToken, id);
+        return completedReply('client', id, key, 'Регистрация завершена, вход подтверждён. Вернитесь во вкладку сайта, где вы начали вход: студия откроется автоматически.');
+      }
       return completedReply('client', id, key, `Регистрация завершена.\n${access(user)}`, clientRows());
     }
     if (command === '/redeem' || data === 'redeem') {
@@ -146,7 +213,10 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
       return completedReply('client', id, key, `Промокод активирован.\n${access(user)}`, clientRows());
     }
     redeemWaiting.delete(id);
-    if (data === 'cancel') for (const [token, item] of pending) if (item.actor === id && item.kind !== 'admin') pending.delete(token);
+    if (data === 'cancel') for (const [token, item] of pending) if (item.actor === id && item.kind !== 'admin') {
+      pending.delete(token);
+      if (item.loginToken) await service.cancelWebsiteLogin(item.loginToken, id).catch(() => {});
+    }
     return send('client', id, `${command === '/start' ? 'SCENZA\n' : ''}${access(await service.userByTelegram(id))}${site ? '' : '\nАдрес сайта ещё настраивается.'}`, clientRows());
   }
   async function showUser(id, value, owner) {
@@ -154,18 +224,19 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
     if (!user) return send('admin', id, 'Пользователь не найден.');
     const rows = [[button('Журнал аккаунта', `logs:${user.id}`)]];
     if (owner) rows.push([button('Доступ +7 дней', `grant:${user.id}:7`), button('Доступ +30 дней', `grant:${user.id}:30`)],
-      [button(user.blocked ? 'Разблокировать' : 'Заблокировать', `${user.blocked ? 'unblock' : 'block'}:${user.id}`)],
-      [button(user.role === 'support' ? 'Убрать роль поддержки' : 'Назначить поддержку', `role:${user.id}:${user.role === 'support' ? 'user' : 'support'}`)]);
-    rows.push([button('К списку', 'users:0')]);
-    return send('admin', id, `${access(user)}\nID: ${clean(user.id)}\nTelegram ID: ${clean(user.telegramUserId) || '—'}\nПочта: ${clean(user.email) || '—'}\nРоль: ${clean(user.role)}`, rows);
+      [button(user.blocked ? 'Разблокировать' : 'Заблокировать', `${user.blocked ? 'unblock' : 'block'}:${user.id}`)]);
+    rows.push([button('К списку', 'users:0')], [button('Главное меню', 'adm:home')]);
+    const details = service.panel ? await service.panel.user(id, user.id).catch(() => null) : null;
+    return send('admin', id, `${access(user)}\nID: ${clean(user.id)}\nTelegram ID: ${clean(user.telegramUserId) || '—'}\nПочта: ${clean(user.email) || '—'}\nРегистрация: ${date(user.createdAt)}\nПоследняя активность: ${date(user.lastActiveAt)}${details ? `\nСоздано роликов: ${details.videos ?? 'нет данных'}\nУспешных обработок: ${details.successful ?? 'нет данных'}\nОшибок: ${details.errors ?? 'нет данных'}\nИспользовано токенов: ${details.ai?.tokens ?? 'нет данных'}\nЛимит токенов: ${details.ai?.allocatedTokens ?? 'не задан'}\nОстаток: ${details.ai?.remainingTokens ?? 'не задан'}` : ''}`, rows);
   }
   async function admin(update, person, text, data, role) {
     const id = person.id, eventKey = `admin:${update.update_id}`, owner = role === 'owner';
     const [raw, ...args] = text.trim().split(/\s+/);
     const command = (raw || '').split('@')[0].toLowerCase();
     if (command === '/id') return send('admin', id, `Ваш Telegram ID: ${id}`);
-    if (!role) return send('admin', id, 'Доступ к панели не предоставлен. /id — ваш Telegram ID.');
-    if (data === 'cancel') {
+    if (!owner) return send('admin', id, 'Доступ к панели не предоставлен. /id — ваш Telegram ID.');
+    if (panel && await panel.handle(id, text, data, eventKey, update.message || {})) return;
+    if (data === 'cancel' || data === 'admincancel') {
       for (const [token, item] of pending) if (item.actor === id && item.kind === 'admin') pending.delete(token);
       return send('admin', id, 'Действие отменено.');
     }
@@ -177,33 +248,39 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
       const rows = result.items.map(user => [button(`${clean(user.name).slice(0, 40)} · ${user.blocked ? 'заблокирован' : user.accessActive ? 'активен' : 'неактивен'}`, `user:${user.id}`)]);
       const navigation = [...(offset > 0 ? [button('Назад', `users:${Math.max(0, offset - 8)}`)] : []), ...(offset + 8 < result.total ? [button('Далее', `users:${offset + 8}`)] : [])];
       if (!query && navigation.length) rows.push(navigation);
+      rows.push([button('Поиск', 'adm:search')], [button('Главное меню', 'adm:home')]);
       return send('admin', id, `Пользователи: ${result.total}\n${result.items.map(user => `${clean(user.name)} · ${clean(user.id)}`).join('\n') || 'Ничего не найдено.'}`, rows);
     }
     if (data?.startsWith('user:')) return showUser(id, data.slice(5), owner);
     if (command === '/logs' || data?.startsWith('logs:')) {
       const userId = data ? data.slice(5) : args[0];
       const logs = await service.logs({ userId, limit: 15 });
-      return send('admin', id, `Журнал действий\n${logs.map(item => `${date(item.at)} · ${clean(item.event)}\nАккаунт: ${clean(item.userId) || '—'}; инициатор: ${clean(item.actorId) || '—'}\n${logDetail(item.detail)}`).join('\n\n') || 'Записей нет.'}`);
+      return send('admin', id, `Журнал действий\n${logs.map(item => `${date(item.at)} · ${clean(item.event)}\nАккаунт: ${clean(item.userId) || '—'}; инициатор: ${clean(item.actorId) || '—'}\n${logDetail(item.detail)}`).join('\n\n') || 'Записей нет.'}`, [[button('Главное меню', 'adm:home')]]);
     }
-    if (command === '/promos' || data === 'promos') {
+    if (command === '/promos' || data === 'promos' || data?.startsWith('promos:')) {
       if (!owner) return send('admin', id, 'Изменения и промокоды доступны только владельцу.');
       const promos = await service.promos();
-      const recent = promos.slice(0, 15);
-      return send('admin', id, `Последние промокоды\n${recent.map(item => `${clean(item.maskedCode)} · ${item.days} дн. · ${item.uses}/${item.maxUses} · ${item.revoked ? 'отозван' : 'не отозван'}\nДействует до: ${date(item.expiresAt)}`).join('\n\n') || 'Промокодов нет.'}\nПолный код показывается только при создании. Для отзыва используйте кнопку или /revoke КОД.`, recent.filter(item => !item.revoked).map(item => [button(`Отозвать ${clean(item.maskedCode)}`, `revoke:${item.id}`)]));
+      const offset = Math.max(0, Number(data?.split(':')[1]) || 0);
+      const recent = promos.slice(offset, offset + 8);
+      const rows = recent.map(item => [...(!item.revoked ? [button(`Отключить ${clean(item.maskedCode)}`, `revoke:${item.id}`)] : []), ...(panel ? [button(`Удалить ${clean(item.maskedCode)}`, `adm:deletepromo:${item.id}`)] : [])]).filter(row => row.length);
+      rows.push([button('Создать промокод', 'adm:promo')], [button('Главное меню', 'adm:home')]);
+      if (offset || offset + 8 < promos.length) rows.splice(-2, 0, [...(offset ? [button('Назад', `promos:${Math.max(0,offset-8)}`)] : []), ...(offset+8 < promos.length ? [button('Далее', `promos:${offset+8}`)] : [])]);
+      return send('admin', id, `Последние промокоды\n${recent.map(item => `${clean(item.maskedCode)} · ${item.days} дн. · ${item.uses}/${item.maxUses} · ${item.revoked ? 'отключён' : 'включён'}\nДействует до: ${date(item.expiresAt)}${item.newUsersOnly ? '\nТолько новые пользователи' : ''}`).join('\n\n') || 'Промокодов нет.'}\nПолный код показывается только при создании. Для отключения используйте кнопку или /revoke КОД.`, rows);
     }
     if (data?.startsWith('confirm:')) {
       if (!owner) return send('admin', id, 'Изменения доступны только владельцу.');
       const item = consume(data.slice(8), id, 'admin');
       if (!item) return send('admin', id, 'Подтверждение уже использовано или истекло.');
-      const result = await service[item.method](id, ...item.args, eventKey);
+      const result = item.method === 'block' ? await service.block(id, ...item.args, eventKey, item.reason) : await service[item.method](id, ...item.args, eventKey);
       if (item.method === 'createPromo') return completedReply('admin', id, eventKey, `Промокод: ${clean(result.code)}\nДоступ: ${result.days} дней\nАктиваций: ${result.maxUses}\nДействует до: ${date(result.expiresAt)}\nСохраните код: повторно он не показывается. Клиент активирует: /redeem КОД. Дни доступа начнутся сразу при активации.`);
       return completedReply('admin', id, eventKey, 'Изменение сохранено.');
     }
     const action = data?.split(':')[0] || command.slice(1);
-    if (['grant', 'block', 'unblock', 'role', 'promo', 'revoke'].includes(action)) {
+    if (action === 'role') return send('admin', id, 'Админ-панель доступна только владельцу. Назначение других администраторов не поддерживается.');
+    if (['grant', 'block', 'unblock', 'promo', 'revoke'].includes(action)) {
       if (!owner) return send('admin', id, 'Изменения доступны только владельцу.');
       const values = data ? data.split(':').slice(1) : args;
-      let method, params, description;
+      let method, params, description, reason;
       if (action === 'promo') {
         const days = Number(values[0]), uses = Number(values[1] ?? 1);
         if (!Number.isSafeInteger(days) || days < 1 || days > 365 || !Number.isSafeInteger(uses) || uses < 1 || uses > 1000) return send('admin', id, 'Формат: /promo ДНИ [АКТИВАЦИИ]. Дни: 1–365, активации: 1–1000.');
@@ -222,22 +299,36 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
         } else if (action === 'role') {
           if (!['user', 'support'].includes(values[1])) return send('admin', id, 'Формат: /role ID user|support. Поддержка может только просматривать данные.');
           method = 'role'; params = [user.id, values[1]]; description = `Назначить роль ${values[1]}`;
-        } else { method = 'block'; params = [user.id, action === 'block']; description = action === 'block' ? 'Заблокировать доступ' : 'Снять блокировку'; }
+        } else {
+          method = 'block'; params = [user.id, action === 'block']; description = action === 'block' ? 'Запретить создание роликов' : 'Снять блокировку';
+          if (action === 'block') {
+            reason = values.slice(1).join(' ').trim();
+            if (!reason || reason.length > 500) return send('admin', id, 'Укажите причину: /block ID ПРИЧИНА (до 500 символов).');
+            description += `\nПричина: ${reason}`;
+          }
+        }
         description += `\nАккаунт: ${clean(user.name)} (${clean(user.id)})?`;
       }
-      const code = session({ actor: id, kind: 'admin', method, args: params });
-      return send('admin', id, `${description}\nПодтверждение действует 5 минут.`, [[button('Подтвердить', `confirm:${code}`), button('Отмена', 'cancel')]]);
+      const code = session({ actor: id, kind: 'admin', method, args: params, reason });
+      return send('admin', id, `${description}\nПодтверждение действует 5 минут.`, [[button('Подтвердить', `confirm:${code}`), button('Отмена', singleBot ? 'admincancel' : 'cancel')]]);
     }
-    return send('admin', id, `Панель SCENZA\nРоль: ${owner ? 'владелец' : 'поддержка, только просмотр'}\n/users — пользователи\n/find ЗАПРОС — поиск\n/logs [ID] — журнал${owner ? '\n/grant ID ДНИ — продлить доступ\n/block ID · /unblock ID\n/role ID user|support\n/promo ДНИ [АКТИВАЦИИ]\n/promos · /revoke КОД' : ''}\n/id — ваш Telegram ID`, [[button('Пользователи', 'users:0'), button('Журнал', 'logs:')], ...(owner ? [[button('Промокод на 7 дней', 'promo:7:1'), button('Промокод на 30 дней', 'promo:30:1')], [button('Промокоды', 'promos')]] : [])]);
+    if (panel) return panel.home(id);
+    return send('admin', id, 'Панель SCENZA', [[button('Пользователи', 'users:0'), button('Журнал', 'logs:')], [button('Промокоды', 'promos')]]);
   }
   async function handle(type, update) {
     const callback = update?.callback_query;
     const message = callback?.message || update?.message;
     const person = callback?.from || message?.from;
     if (!person || !Number.isSafeInteger(person.id) || !Number.isSafeInteger(update.update_id)) return;
+    if (singleBot && type === 'client') {
+      const command = (message?.text || '').trim().split(/\s/)[0].split('@')[0].toLowerCase();
+      const adminCommand = /^\/(?:admin|users|find|logs|grant|block|unblock|role|promo|promos|revoke)$/.test(command);
+      const adminCallback = /^(?:adm:|admin$|admincancel$|users:|user:|logs:|grant:|block:|unblock:|role:|promo:|promos(?::|$)|revoke:|confirm:)/.test(callback?.data || '');
+      if (callback ? adminCallback : adminCommand || panel?.hasPending(person.id)) type = 'admin';
+    }
     // Recheck current privileges even for old buttons and private-chat mismatches.
     const currentRole = type === 'admin' ? await service.adminRole(person.id) : null;
-    const role = ['owner', 'support'].includes(currentRole) ? currentRole : null;
+    const role = currentRole === 'owner' ? currentRole : null;
     if (message?.chat?.type !== 'private' || message.chat.id !== person.id || person.is_bot) return;
     if (callback) {
       try { await api(type, 'answerCallbackQuery', { callback_query_id: callback.id }); }
@@ -251,17 +342,19 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
       await (type === 'client' ? client(update, person, message.text || '', callback?.data) : admin(update, person, message.text || '', callback?.data, role));
     } catch (error) {
       if (error.telegramFailure) throw error;
-      await send(type, person.id, 'Не удалось выполнить действие. Проверьте данные и статус аккаунта. Если проблема повторяется, обратитесь в поддержку.');
+      const membership = /^(?:Для регистрации подпишитесь|Не удалось проверить подписку)/.test(error.message);
+      await send(type, person.id, error.status && error.status < 500 || membership ? error.message : 'Не удалось выполнить действие. Сервис временно недоступен. Попробуйте позже.', type === 'client' ? membership ? [[{ text: 'Подписаться на MediaFlowTech', url: 'https://t.me/MediaFlowTech' }]] : clientRows() : [[button('Главное меню', 'adm:home')]]);
     }
   }
   async function configure() {
     const commands = {
       client: [['start', 'Главное меню'], ['status', 'Статус и срок доступа'], ['site', 'Перейти на сайт'], ['redeem', 'Активировать промокод'], ['terms', 'Условия использования'], ['privacy', 'Обработка данных'], ['help', 'Помощь'], ['id', 'Мой Telegram ID']],
-      admin: [['start', 'Панель управления'], ['users', 'Список пользователей'], ['find', 'Поиск пользователя'], ['logs', 'Журнал действий'], ['grant', 'Продлить доступ'], ['block', 'Заблокировать аккаунт'], ['unblock', 'Разблокировать аккаунт'], ['role', 'Изменить роль'], ['promo', 'Создать промокод на дни доступа'], ['promos', 'Список промокодов'], ['revoke', 'Отозвать промокод'], ['id', 'Мой Telegram ID']],
+      admin: [['start', 'Панель управления'], ['users', 'Список пользователей'], ['find', 'Поиск пользователя'], ['logs', 'Журнал действий'], ['grant', 'Продлить доступ'], ['block', 'Запретить создание роликов'], ['unblock', 'Разрешить создание роликов'], ['promo', 'Создать промокод на дни доступа'], ['promos', 'Список промокодов'], ['revoke', 'Отозвать промокод'], ['id', 'Мой Telegram ID']],
     };
-    for (const type of Object.keys(tokens)) if (tokens[type]) {
+    if (singleBot) commands.client.push(['admin', 'Панель администратора']);
+    for (const type of botTypes) if (tokens[type]) {
       await api(type, 'setMyCommands', { commands: commands[type].map(([command, description]) => ({ command, description })) });
-      await api(type, 'setMyDescription', { description: type === 'client' ? 'SCENZA: регистрация, статус доступа и активация промокодов. Работа с проектами — на сайте. Пробный доступ 7 дней, без автосписаний.' : 'Закрытая панель SCENZA: аккаунты, журнал действий, права доступа и промокоды. Доступ только для назначенных сотрудников.' });
+      await api(type, 'setMyDescription', { description: type === 'client' ? 'SCENZA: регистрация, статус доступа и активация промокодов. Работа с проектами — на сайте. Пробный доступ 7 дней, без автосписаний.' : 'Закрытая панель SCENZA: пользователи, расходы AI, ошибки, доступ, промокоды и обращения. Доступ только для владельца.' });
     }
   }
   async function poll(type, signal) {
@@ -327,22 +420,27 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
   async function start() {
     if (starting) return starting;
     starting = (async () => {
-      const active = Object.keys(tokens).filter(type => tokens[type] && !health[type].running);
+      const active = botTypes.filter(type => tokens[type] && !health[type].running);
       for (const type of active) {
         const webhook = await api(type, 'getWebhookInfo');
         if (webhook?.url) throw new Error(`Telegram ${type}: настроен webhook; polling не запущен.`);
       }
       if (!controller || controller.signal.aborted) controller = new AbortController();
       loops.push(...active.map(type => poll(type, controller.signal)));
+      if (panel && !notificationTimer) {
+        notificationTimer = setInterval(() => { void checkNotifications().catch(() => {}); }, 60000);
+        notificationTimer.unref();
+      }
     })();
     try { await starting; } finally { starting = null; }
   }
   async function stop() {
     if (starting) await starting.catch(() => {});
+    clearInterval(notificationTimer); notificationTimer = null;
     controller?.abort();
-    await Promise.allSettled(loops);
+    await Promise.allSettled([...loops, notifying]);
     loops = [];
   }
-  return { handleClient: update => handle('client', update), handleAdmin: update => handle('admin', update), configure, start, stop,
-    status: () => ({ client: { configured: !!clientToken, ...health.client }, admin: { configured: !!adminToken, ...health.admin }, siteReady: !!site, registrationEnabled: !!registrationEnabled }) };
+  return { handleClient: update => handle('client', update), handleAdmin: update => handle('admin', update), configure, start, stop, checkNotifications,
+    status: () => ({ client: { configured: !!clientToken, ...health.client }, admin: { configured: !!tokens.admin, ...(singleBot ? health.client : health.admin) }, siteReady: !!site, registrationEnabled: !!registrationEnabled }) };
 }

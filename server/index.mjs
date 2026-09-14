@@ -12,6 +12,8 @@ import { spawn } from 'node:child_process';
 import ffmpegPath from 'ffmpeg-static';
 import ffprobe from 'ffprobe-static';
 import { createAuth } from './auth.mjs';
+import { createAdminService } from './admin.mjs';
+import { createTelegramMembership } from './telegram-membership.mjs';
 
 export const ffprobePath = ffprobe.path;
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -26,6 +28,12 @@ for (const [ip, mask] of [['2001::', 23], ['2001:db8::', 32], ['2002::', 16]]) b
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const exists = async file => fs.access(file).then(() => true, () => false);
 const mediaUrl = name => `/media/${name}`;
+const startsProcessing = (method, route) => method === 'POST' && (
+  ['/api/upload', '/api/import', '/api/video/import', '/api/video/projects'].includes(route)
+  || /^\/api\/projects\/[^/]+\/(?:analyze|export|banner)$/.test(route)
+  || /^\/api\/video\/projects\/[^/]+\/(?:complete|analyze|preview|revise|export|ad-preview|advertisement|music)$/.test(route)
+  || /^\/api\/video\/jobs\/[^/]+\/retry$/.test(route)
+);
 const now = () => new Date().toISOString();
 const defaultEditor = (duration, format = '9:16') => ({ sceneId: '', start: 0, end: Math.min(duration, 30), format, cropX: 50, muted: false, subtitleText: '', subtitleStyle: 'classic', banner: null });
 
@@ -47,7 +55,7 @@ export function supportedVideoPage(value) {
   return false;
 }
 
-async function publicUrl(value) {
+export async function publicUrl(value) {
   let url;
   try { url = new URL(value); } catch { throw fail('Введите действительную HTTP(S) ссылку на видео.'); }
   if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password || (url.port && !['80', '443'].includes(url.port))) throw fail('Поддерживаются публичные HTTP(S) ссылки без авторизации и нестандартных портов.');
@@ -93,15 +101,30 @@ async function saveStream(stream, file, limit) {
   await pipeline(stream, limiter, createWriteStream(file, { flags: 'wx' }));
   if (!size) throw fail('Файл пустой.');
 }
+export async function downloadSource(value, file) {
+  const { response } = await remoteStream(value, AbortSignal.timeout(3600000));
+  if (String(response.headers['content-type']).includes('text/html')) { response.destroy(); throw fail('Не удалось обработать ссылку. Используйте прямую ссылку на видеофайл или загрузите видео с устройства.'); }
+  await saveStream(response, file, 20 * 1024 ** 3);
+}
 
-export async function createServer({ dataDir = process.env.SCENA_DATA_DIR || path.join(workspace, '.scena'), seed = true, authOptions = {}, allowLocalStudio = true, allowedOrigins = [] } = {}) {
+export async function createServer({ dataDir = process.env.SCENA_DATA_DIR || path.join(workspace, '.scena'), seed = true, authOptions = {}, allowLocalStudio = true, allowedOrigins = [], videoLibrary } = {}) {
   dataDir = path.resolve(dataDir);
   const mediaDir = path.join(dataDir, 'media');
   await fs.mkdir(mediaDir, { recursive: true });
-  const auth = authOptions === null ? null : await createAuth({ allowedOrigins: ['http://127.0.0.1:5173', 'http://localhost:5173'], ...authOptions, dataDir: path.join(dataDir, 'auth') });
+  const auth = authOptions === null ? null : await createAuth({ allowedOrigins: ['http://127.0.0.1:5173', 'http://localhost:5173'], telegramMembership: createTelegramMembership({ botToken: authOptions.telegramBotToken || process.env.SCENA_BOT_TOKEN }), ...authOptions, dataDir: path.join(dataDir, 'auth') });
   const accountStudios = new Map();
+  let videoApi;
+  const getVideoApi = () => videoApi ||= import('./ai/api.mjs').then(({ createVideoApi }) => createVideoApi({ dataDir })).catch(error => { videoApi = null; throw error; });
+  const admin = auth ? await createAdminService({ auth, dataDir, getVideoApi }) : null;
+  if (auth) auth.bots.panel = admin;
+  const handleVideo = async (request, response, ownerId) => {
+    if (!request.url?.startsWith('/api/video/')) return false;
+    return (await getVideoApi()).handle(request, response, ownerId);
+  };
+  const aiClips = videoLibrary || { list: async () => (await getVideoApi()).listClips('local'), file: async id => (await getVideoApi()).localClipFile('local', id) };
   const databasePath = path.join(dataDir, 'library.json');
   let state = { projects: [], clips: [], publications: [], jobs: [], settings: { defaultFormat: '9:16', quality: '720p', telegramConnected: false }, banners: {} };
+  const allClips = async () => [...state.clips, ...await aiClips.list()].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)));
   if (await exists(databasePath)) state = { ...state, ...JSON.parse(await fs.readFile(databasePath, 'utf8')) };
   for (const job of state.jobs) if (['running', 'queued'].includes(job.status)) Object.assign(job, { status: 'error', message: 'Обработка прервана перезапуском. Запустите её снова.' });
   let saveChain = Promise.resolve();
@@ -378,20 +401,34 @@ export async function createServer({ dataDir = process.env.SCENA_DATA_DIR || pat
       if (request.headers['sec-fetch-site'] === 'cross-site') throw fail('Межсайтовый запрос запрещён.', 403);
       const url = new URL(request.url, `http://${host}`); const route = url.pathname; const method = request.method;
       if (method === 'OPTIONS') { response.writeHead(204); response.end(); return; }
+      if (method === 'GET' && route === '/api/health/ready') { send({ ok: true }); return; }
       if (auth) {
         if (method === 'GET' && route === '/api/auth/session') { send({ user: auth.session(request), localStudioAllowed: allowLocalStudio }); return; }
         if (await auth.handle(request, response, route)) return;
         const account = auth.session(request);
         if (account) {
+          if (route === '/api/support') {
+            if (method === 'GET') { send({ tickets: await admin.userSupport(account.id) }); return; }
+            if (method === 'POST') {
+              const body = await jsonBody(request);
+              send({ ticket: await admin.createSupportForUser(account.id, body.text, `web:${randomUUID()}`) }, 201); return;
+            }
+            throw fail('Метод не поддерживается.', 405);
+          }
           const normalizedRoute = route.startsWith('/media/') ? '/media/:file' : route.startsWith('/downloads/') ? '/downloads/:file' : route.replace(/(\/api\/(?:projects|jobs|publications)\/)[^/]+/, '$1:id');
           const activityRoute = /^\/(?:media\/:file|downloads\/:file|api\/(?:health|projects|clips|publications|settings|upload|import|telegram\/send|(?:projects|jobs|publications)\/:id(?:\/(?:analyze|export|banner|cancel))?))$/.test(normalizedRoute) ? normalizedRoute : '/unknown';
           const activityEvent = ['GET', 'HEAD'].includes(method) ? 'studio.read' : route === '/api/upload' ? 'studio.upload' : route === '/api/import' ? 'studio.import' : route.endsWith('/export') ? 'studio.export' : route === '/api/telegram/send' ? 'studio.telegram_send' : 'studio.update';
           response.once('finish', () => {
             if (auth.bots?.recordActivity) void auth.bots.recordActivity(account.id, response.statusCode >= 400 ? 'studio.rejected' : activityEvent, { method, route: activityRoute, status: response.statusCode }).catch(() => console.error('SCENZA: не удалось сохранить событие активности.'));
           });
-          if (!account.accessActive && !['GET', 'HEAD'].includes(method)) throw fail('Пробные 7 дней завершены. Обработка станет доступна после оплаты тарифа. Приём оплаты пока не открыт.', 402);
+          if (startsProcessing(method, route)) {
+            if (account.blocked) throw fail(`Создание роликов заблокировано. Причина: ${account.blockReason || 'обратитесь в поддержку'}. Вход и ваши данные доступны.`, 403);
+            await admin.assertGenerationAllowed();
+          }
+          if (!account.accessActive && !['GET', 'HEAD'].includes(method)) throw fail('Пробные 7 дней завершены. Обработка станет доступна после продления доступа. Приём оплаты пока не открыт.', 402);
+          if (await handleVideo(request, response, account.id)) return;
           if (!accountStudios.has(account.id)) {
-            const studio = createServer({ dataDir: path.join(dataDir, 'accounts', account.id), seed: false, authOptions: null, allowedOrigins: [...allowedOrigins, ...(authOptions?.allowedOrigins || [])] });
+            const studio = createServer({ dataDir: path.join(dataDir, 'accounts', account.id), seed: false, authOptions: null, allowedOrigins: [...allowedOrigins, ...(authOptions?.allowedOrigins || [])], videoLibrary: { list: async () => (await getVideoApi()).listClips(account.id), file: async id => (await getVideoApi()).localClipFile(account.id, id) } });
             accountStudios.set(account.id, studio);
             studio.catch(() => accountStudios.delete(account.id));
           }
@@ -401,13 +438,16 @@ export async function createServer({ dataDir = process.env.SCENA_DATA_DIR || pat
         if (/(?:^|;\s*)scena_session=/.test(request.headers.cookie || '')) throw fail('Сеанс завершён. Войдите в аккаунт снова.', 401);
         if (!allowLocalStudio) throw fail('Войдите в аккаунт SCENZA.', 401);
       }
+      if (admin && startsProcessing(method, route)) await admin.assertGenerationAllowed();
+      if (route === '/api/support') throw fail('Войдите в аккаунт SCENZA для обращения в поддержку.', 401);
+      if (await handleVideo(request, response, 'local')) return;
       if (method === 'GET' && route === '/api/health') { send({ ok: true, ffmpeg: await exists(ffmpegPath), pendingJobs: state.jobs.filter(job => ['queued', 'running'].includes(job.status)).length }); return; }
       if (method === 'GET' && route === '/api/projects') { send({ projects: state.projects }); return; }
-      if (method === 'GET' && route === '/api/clips') { send({ clips: state.clips }); return; }
+      if (method === 'GET' && route === '/api/clips') { send({ clips: await allClips() }); return; }
       if (method === 'GET' && route === '/api/publications') { send({ publications: state.publications }); return; }
       if (method === 'POST' && route === '/api/publications') {
         const body = await jsonBody(request);
-        if (!state.clips.some(clip => clip.id === body.clipId) || !['youtube', 'tiktok', 'instagram', 'telegram'].includes(body.platform) || typeof body.caption !== 'string' || body.caption.length > 5000) throw fail('Проверьте клип, площадку и подпись публикации.');
+        if (!(await allClips()).some(clip => clip.id === body.clipId) || !['youtube', 'tiktok', 'instagram', 'telegram'].includes(body.platform) || typeof body.caption !== 'string' || body.caption.length > 5000) throw fail('Проверьте клип, площадку и подпись публикации.');
         const publication = { id: randomUUID(), clipId: body.clipId, platform: body.platform, caption: body.caption, status: 'draft', createdAt: now() };
         state.publications.unshift(publication); await persist(); send({ publication }, 201); return;
       }
@@ -419,14 +459,14 @@ export async function createServer({ dataDir = process.env.SCENA_DATA_DIR || pat
       }
       if (method === 'POST' && route === '/api/telegram/send') {
         const body = await jsonBody(request);
-        const clip = state.clips.find(item => item.id === body.clipId); if (!clip) throw fail('Клип не найден.', 404);
+        const clip = (await allClips()).find(item => item.id === body.clipId); if (!clip) throw fail('Клип не найден.', 404);
         const existingPublication = body.publicationId === undefined ? undefined : state.publications.find(item => item.id === body.publicationId);
         if (body.publicationId !== undefined && (!existingPublication || existingPublication.clipId !== clip.id || existingPublication.platform !== 'telegram')) throw fail('Публикация должна относиться к этому клипу и площадке Telegram.');
         if (body.caption !== undefined && (typeof body.caption !== 'string' || body.caption.length > 1024)) throw fail('Подпись Telegram должна содержать не больше 1024 символов.');
         const caption = body.caption ?? existingPublication?.caption ?? clip.title;
         if (caption.length > 1024) throw fail('Подпись Telegram должна содержать не больше 1024 символов.');
         if (!state.settings.telegramConnected || !state.settings.telegramChatId) throw fail('Сначала подключите Telegram бота и укажите Chat ID в настройках.');
-        const file = path.join(mediaDir, `${clip.id}.mp4`);
+        const file = clip.projectUrl ? await aiClips.file(clip.id) : path.join(mediaDir, `${clip.id}.mp4`);
         if ((await fs.stat(file)).size > 50 * 1024 * 1024) throw fail('Telegram Bot API принимает файлы до 50 МБ. Сократите клип или скачайте его для ручной отправки.');
         const secret = JSON.parse(await fs.readFile(path.join(dataDir, 'telegram-secret.json'), 'utf8'));
         const form = new FormData(); form.set('chat_id', state.settings.telegramChatId); form.set('caption', caption); form.set('document', await openAsBlob(file, { type: 'video/mp4' }), `scena-${clip.id}.mp4`);
@@ -508,6 +548,7 @@ export async function createServer({ dataDir = process.env.SCENA_DATA_DIR || pat
   });
   server.requestTimeout = 30 * 60000;
   server.on('close', () => {
+    void videoApi?.then(api => api.close()).catch(() => {});
     closing = true;
     for (const child of processes.values()) child.kill();
     for (const controller of controllers.values()) controller.abort();
