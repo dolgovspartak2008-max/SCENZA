@@ -18,7 +18,7 @@ test('AI exports join the clip library and publications while preserving account
     const api = (route, cookie = '', body) => fetch(base + route, { method: body ? 'POST' : 'GET', headers: { Cookie: cookie, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
     let telegramId = 4242;
     const register = async email => {
-      const input = { email, password: 'valid-password', mode: 'register', termsAccepted: true, dataConsent: true };
+      const input = { email, password: 'valid-password', mode: 'register', name: `Test ${email}`, termsAccepted: true, dataConsent: true };
       const proofResponse = await api('/api/auth/email/start', '', input);
       const cookie = proofResponse.headers.get('set-cookie').split(';')[0];
       const proof = await proofResponse.json();

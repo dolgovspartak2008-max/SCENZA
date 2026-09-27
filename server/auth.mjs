@@ -429,6 +429,8 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
     if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw fail('Введите корректный email.');
     if (typeof body.password !== 'string' || body.password.length < 8 || body.password.length > 128) throw fail('Пароль должен содержать от 8 до 128 символов.');
+    const name = body.mode === 'register' ? (typeof body.name === 'string' ? body.name.trim().replace(/\s+/g, ' ').slice(0, 60) : '') : '';
+    if (body.mode === 'register' && !name) throw fail('Введите имя пользователя.');
     rate(`email:${digest(email)}`, body.mode === 'login' ? 10 : 5);
     const existing = accounts.find(user => user.email === email);
     if (body.mode === 'login') {
@@ -446,7 +448,7 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
     if (challenges.size >= 1000) throw fail('Сервис занят. Попробуйте позже.', 503);
     const hashedPassword = await passwordHash(body.password);
     const code = emailAuth ? null : String(randomInt(100000, 1000000));
-    const pending = { telegramUserId: proof?.actor, browserHash: proof?.browserHash, email, password: hashedPassword, purpose: body.mode, userId: existing?.id, consent: accepted, remember: body.remember === true, codeHash: code ? digest(code) : null, expiresAt: now() + 10 * 60000, attempts: 0 };
+    const pending = { telegramUserId: proof?.actor, browserHash: proof?.browserHash, email, password: hashedPassword, purpose: body.mode, userId: existing?.id, consent: accepted, remember: body.remember === true, codeHash: code ? digest(code) : null, expiresAt: now() + 10 * 60000, attempts: 0, name };
     if (proof) {
       proof.expiresAt = pending.expiresAt;
       cookie(response, 'scena_telegram_bot', cookies(request).scena_telegram_bot, 600);
@@ -488,7 +490,7 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
           audit(transaction, 'account.email_link', linked.id, linked.id);
           return linked;
         }
-        const created = account({ provider: 'email', telegramUserId: pending.telegramUserId, email: pending.email, name: pending.email.split('@')[0], password: pending.password, emailVerifiedAt: new Date(now()).toISOString() }, pending.consent);
+        const created = account({ provider: 'email', telegramUserId: pending.telegramUserId, email: pending.email, name: pending.name || pending.email.split('@')[0], password: pending.password, emailVerifiedAt: new Date(now()).toISOString() }, pending.consent);
         next.push(created);
         audit(transaction, 'register', created.id, created.id, { provider: 'email' });
         return created;

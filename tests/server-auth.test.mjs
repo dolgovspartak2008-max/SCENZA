@@ -125,7 +125,7 @@ for (const durableStore of [false, true]) test(`sessions survive restart and rev
   const accountStore = durableStore ? { load: async fallback => structuredClone(stored || fallback), save: async next => { stored = structuredClone(next); } } : undefined;
   const f = await fixture(t, { accountStore, ownerTelegramIds: ['1'] });
   const email = 'persistent@example.com';
-  const start = await f.call('/email/start', { mode: 'register', email, password, remember: true, ...consent });
+  const start = await f.call('/email/start', { mode: 'register', name: 'Test User', email, password, remember: true, ...consent });
   const registration = await f.call('/email/verify', { challengeId: start.body.challengeId, code: f.mail.at(-1).code });
   const firstCookie = registration.cookies[0].split(';')[0];
   await f.restart();
@@ -168,7 +168,7 @@ for (const durableStore of [false, true]) test(`sessions survive restart and rev
 test('legacy account snapshots without sessions still allow password login', async t => {
   const f = await fixture(t);
   const email = 'legacy@example.com';
-  const start = await f.call('/email/start', { mode: 'register', email, password, ...consent });
+  const start = await f.call('/email/start', { mode: 'register', name: 'Test User', email, password, ...consent });
   assert.equal((await f.call('/email/verify', { challengeId: start.body.challengeId, code: f.mail.at(-1).code })).status, 200);
   const filename = path.join(f.dataDir, 'accounts.json');
   const legacy = JSON.parse(await fs.readFile(filename, 'utf8'));
@@ -188,7 +188,7 @@ test('failed session writes preserve the previous durable login and do not issue
   };
   const f = await fixture(t, { accountStore });
   const email = 'atomic@example.com';
-  const start = await f.call('/email/start', { mode: 'register', email, password, remember: true, ...consent });
+  const start = await f.call('/email/start', { mode: 'register', name: 'Test User', email, password, remember: true, ...consent });
   const registration = await f.call('/email/verify', { challengeId: start.body.challengeId, code: f.mail.at(-1).code });
   rejectWrites = true;
   for (const [route, body] of [['/email/start', { mode: 'login', email, password, remember: true }], ['/logout', {}]]) {
@@ -204,7 +204,7 @@ test('failed session writes preserve the previous durable login and do not issue
 test('email requires ownership verification, persists one trial and rejects replay and wrong password', async t => {
   const f = await fixture(t);
   assert.equal((await f.call('/config')).body.emailCodeLength, 6);
-  const started = await f.call('/email/start', { mode: 'register', email: 'Person@Example.com', password, remember: true, ...consent });
+  const started = await f.call('/email/start', { mode: 'register', name: 'Test User', email: 'Person@Example.com', password, remember: true, ...consent });
   assert.equal(started.status, 200);
   assert.equal(started.body.verificationRequired, true);
   assert.equal((await f.call('/session')).body.user, null);
@@ -244,13 +244,13 @@ test('email requires ownership verification, persists one trial and rejects repl
 
 test('registration requires separate consents and configured delivery; reset revokes existing sessions', async t => {
   const disabled = await fixture(t, { legalReady: false });
-  assert.equal((await disabled.call('/email/start', { mode: 'register', email: 'a@example.com', password, ...consent })).status, 503);
+  assert.equal((await disabled.call('/email/start', { mode: 'register', name: 'Test User', email: 'a@example.com', password, ...consent })).status, 503);
   const unavailable = await fixture(t, { emailDelivery: undefined });
   assert.equal((await unavailable.call('/config')).body.emailEnabled, false);
-  assert.equal((await unavailable.call('/email/start', { mode: 'register', email: 'a@example.com', password, ...consent })).status, 503);
+  assert.equal((await unavailable.call('/email/start', { mode: 'register', name: 'Test User', email: 'a@example.com', password, ...consent })).status, 503);
   const f = await fixture(t);
-  assert.equal((await f.call('/email/start', { mode: 'register', email: 'a@example.com', password, termsAccepted: true })).status, 400);
-  const start = await f.call('/email/start', { mode: 'register', email: 'a@example.com', password, ...consent });
+  assert.equal((await f.call('/email/start', { mode: 'register', name: 'Test User', email: 'a@example.com', password, termsAccepted: true })).status, 400);
+  const start = await f.call('/email/start', { mode: 'register', name: 'Test User', email: 'a@example.com', password, ...consent });
   const registration = await f.call('/email/verify', { challengeId: start.body.challengeId, code: f.mail.at(-1).code });
   const oldCookie = registration.cookies[0].split(';')[0];
   const oldSession = (await f.call('/session')).body.user;
@@ -337,18 +337,18 @@ test('trusted proxy rejects forwarded address lists and malformed addresses', as
 
 test('OTP expires, rejects repeated guessing and cannot create duplicate trial accounts', async t => {
   const f = await fixture(t);
-  const start = await f.call('/email/start', { mode: 'register', email: 'otp@example.com', password, ...consent });
+  const start = await f.call('/email/start', { mode: 'register', name: 'Test User', email: 'otp@example.com', password, ...consent });
   const validCode = f.mail[0].code;
   const wrongCode = validCode === '111111' ? '222222' : '111111';
   for (let index = 0; index < 5; index++) assert.equal((await f.call('/email/verify', { challengeId: start.body.challengeId, code: wrongCode })).status, 400);
   assert.equal((await f.call('/email/verify', { challengeId: start.body.challengeId, code: validCode })).status, 429);
   assert.equal((await f.call('/session')).body.user, null);
-  const fresh = await f.call('/email/start', { mode: 'register', email: 'otp@example.com', password, ...consent });
+  const fresh = await f.call('/email/start', { mode: 'register', name: 'Test User', email: 'otp@example.com', password, ...consent });
   f.advance(10 * 60000 + 1);
   assert.equal((await f.call('/email/verify', { challengeId: fresh.body.challengeId, code: f.mail.at(-1).code })).status, 400);
-  const first = await f.call('/email/start', { mode: 'register', email: 'otp@example.com', password, ...consent });
+  const first = await f.call('/email/start', { mode: 'register', name: 'Test User', email: 'otp@example.com', password, ...consent });
   const firstCode = f.mail.at(-1).code;
-  const second = await f.call('/email/start', { mode: 'register', email: 'otp@example.com', password, ...consent });
+  const second = await f.call('/email/start', { mode: 'register', name: 'Test User', email: 'otp@example.com', password, ...consent });
   const secondCode = f.mail.at(-1).code;
   const results = await Promise.all([
     f.call('/email/verify', { challengeId: first.body.challengeId, code: firstCode }),
@@ -369,8 +369,8 @@ test('secure mode sets Secure cookie and rejects oversized or non-JSON requests'
 
 test('existing UI password contract accepts 8 characters and rejects fewer', async t => {
   const f = await fixture(t);
-  assert.equal((await f.call('/email/start', { mode: 'register', email: 'short@example.com', password: '1234567', ...consent })).status, 400);
-  assert.equal((await f.call('/email/start', { mode: 'register', email: 'valid@example.com', password: '12345678', ...consent })).status, 200);
+  assert.equal((await f.call('/email/start', { mode: 'register', name: 'Test User', email: 'short@example.com', password: '1234567', ...consent })).status, 400);
+  assert.equal((await f.call('/email/start', { mode: 'register', name: 'Test User', email: 'valid@example.com', password: '12345678', ...consent })).status, 200);
 });
 
 test('external email ownership verification preserves password login and uses the durable account store', async t => {
@@ -387,7 +387,7 @@ test('external email ownership verification preserves password login and uses th
   const f = await fixture(t, { emailDelivery: undefined, emailAuth, accountStore });
   assert.equal((await f.call('/config')).body.emailEnabled, true);
   assert.equal((await f.call('/config')).body.emailCodeLength, 8);
-  const start = await f.call('/email/start', { mode: 'register', email: 'external@example.com', password, ...consent });
+  const start = await f.call('/email/start', { mode: 'register', name: 'Test User', email: 'external@example.com', password, ...consent });
   assert.equal(start.status, 200);
   assert.deepEqual(sent, [{ email: 'external@example.com', purpose: 'register' }]);
   assert.equal((await f.call('/email/verify', { challengeId: start.body.challengeId, code: '123456' })).status, 400);

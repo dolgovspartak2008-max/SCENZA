@@ -123,7 +123,7 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
   const links = [{ id: 'demo', label: copy.nav.features }, { id: 'workflow', label: copy.nav.how }, { id: 'pricing', label: copy.nav.pricing }, { id: 'faq', label: copy.nav.faq }];
   const languageControl = <div className="scenza-language" role="group" aria-label={copy.languageLabel}><button onClick={() => setLanguage('ru')} aria-pressed={language === 'ru'} lang="ru">RU</button><button onClick={() => setLanguage('en')} aria-pressed={language === 'en'} lang="en">EN</button></div>;
 
-  const accountLabel = account?.email || account?.name;
+  const accountLabel = account?.name || account?.email;
   const accountButton = <Button variant="outline" size="sm" className={account ? 'scenza-account-button' : undefined} title={accountLabel} onClick={() => openAuth('login')}>{account ? <><UserRound size={17} /><span>{accountLabel}</span></> : copy.login}</Button>;
   return <div className="scenza-landing" inert={!robotSettled}>
     <ParticleBackground />

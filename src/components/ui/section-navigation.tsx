@@ -3,6 +3,9 @@ import { animate, motion } from 'framer-motion';
 import type { Language } from '@/landing/plans';
 import './section-navigation.css';
 
+// Shorter section jumps keep wheel scrolling responsive: input is held only while a jump is in flight.
+const SECTION_MOVE_MS = 480;
+
 type Section = { id: string; label: string; element: HTMLElement; top: number; height: number };
 
 export function SectionNavigation({ language, disabled = false }: { language: Language; disabled?: boolean }) {
@@ -102,14 +105,14 @@ export function SectionNavigation({ language, disabled = false }: { language: La
           { opacity: 1, translate: '0 0' },
           { opacity: .2, translate: `0 ${-18 * direction}px`, offset: .65 },
           { opacity: 1, translate: '0 0' },
-        ], { duration: 700, easing: 'cubic-bezier(.22, 1, .36, 1)' }));
+        ], { duration: SECTION_MOVE_MS, easing: 'cubic-bezier(.22, 1, .36, 1)' }));
         reveals.push(item.element.animate([
           { opacity: .3, translate: `0 ${22 * direction}px` },
           { opacity: 1, translate: '0 0' },
-        ], { duration: 700, easing: 'cubic-bezier(.22, 1, .36, 1)' }));
+        ], { duration: SECTION_MOVE_MS, easing: 'cubic-bezier(.22, 1, .36, 1)' }));
       }
       scrollAnimation = animate(from, destination, {
-        duration: .7, ease: [.22, 1, .36, 1],
+        duration: SECTION_MOVE_MS / 1000, ease: [.22, 1, .36, 1],
         onUpdate: value => window.scrollTo({ top: value, behavior: 'instant' }),
         onComplete: () => {
           window.scrollTo({ top: position(), behavior: 'instant' });

@@ -80,6 +80,7 @@ try {
   await page.getByRole('button', { name: 'Войти', exact: true }).first().click();
   await page.getByRole('tab', { name: 'Регистрация', exact: true }).click();
   assert.equal(await registration.getByRole('link', { name: 'Открыть локальную студию', exact: true }).count(), 0);
+  await registration.locator('#scenza-name').fill('Browser Test');
   await registration.locator('#scenza-email').fill('browser-test@example.com');
   await registration.locator('#scenza-password').fill('sample-password');
   await registration.getByRole('checkbox').nth(0).check();
@@ -115,7 +116,7 @@ try {
   assert.equal(await page.locator('.connection-error').count(), 0);
   await page.goto(`${base}/?account`);
   await page.getByRole('heading', { name: 'Ваш аккаунт SCENZA' }).waitFor();
-  assert.match(await page.locator('.scenza-header-actions').innerText(), /browser-test@example.com/);
+  assert.match(await page.locator('.scenza-header-actions').innerText(), /Browser Test/);
   assert.equal(await page.locator('.scenza-header-actions').getByRole('button', { name: 'Войти', exact: true }).count(), 0);
   for (const width of [320, 390, 1440]) {
     await page.setViewportSize({ width, height: 780 });
@@ -145,7 +146,7 @@ try {
   await page.keyboard.press('Escape');
   releaseLogin();
   await page.locator('.scenza-header-actions .scenza-account-button').waitFor();
-  assert.match(await page.locator('.scenza-header-actions').innerText(), /browser-test@example.com/);
+  assert.match(await page.locator('.scenza-header-actions').innerText(), /Browser Test/);
   assert.equal(new URL(page.url()).pathname, '/');
   assert.deepEqual(errors, []);
   console.log('PASS: email registration with injected delivery, OTP confirmation, session cookie, isolated studio, logout, no console errors');

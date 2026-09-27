@@ -32,15 +32,23 @@ export default function AiStudio({ projectId, list=false, navigate, notify }: {p
   const [showCandidates,setShowCandidates]=useState(false);
   const [filter,setFilter]=useState('all'),[revision,setRevision]=useState(''),[ready,setReady]=useState<boolean|null>(null),[ad,setAd]=useState<Ad|null>(null);
   const input=useRef<HTMLInputElement>(null),controller=useRef<AbortController|null>(null);
+  // Polling returns the same data most of the time; only changed responses reach React, so the studio does not re-render every 2.5 s.
+  const snapshot=useRef({projects:'',project:'',job:''});
+  const polling=useRef(false);
+  const changed=(key:'projects'|'project'|'job',value:unknown)=>{const next=JSON.stringify(value);if(snapshot.current[key]===next)return false;snapshot.current[key]=next;return true;};
   const refresh=useCallback(async()=>{
-    if(list){const result=await request<{projects:VideoProject[]}>(`${api}/projects`);setProjects(result.projects);return;}
+    if(list){const result=await request<{projects:VideoProject[]}>(`${api}/projects`);if(changed('projects',result.projects))setProjects(result.projects);return;}
     if(!projectId)return;
-    const result=await request<{project:VideoProject}>(`${api}/projects/${projectId}`);setProject(result.project);
+    const result=await request<{project:VideoProject}>(`${api}/projects/${projectId}`);if(changed('project',result.project))setProject(result.project);
     setSettings(current=>current||result.project.settings||null);setAd(current=>current||result.project.ad||null);
-    if(result.project.jobId){const response=await request<{job:VideoJob}>(`${api}/jobs/${result.project.jobId}`);setJob(response.job);}
+    if(result.project.jobId){const response=await request<{job:VideoJob}>(`${api}/jobs/${result.project.jobId}`);if(changed('job',response.job))setJob(response.job);}
   },[list,projectId]);
-  useEffect(()=>{setProject(null);setJob(null);setUploadProgress(null);setSettings(null);setAd(null);setShowCandidates(false);setError('');void refresh().catch(e=>setError(e.message));void request<{aiReady:boolean}>(`${api}/config`).then(value=>setReady(value.aiReady)).catch(e=>setError(e.message));},[refresh]);
-  useEffect(()=>{const timer=setInterval(()=>{if(document.visibilityState==='visible')void refresh().catch(e=>setError(e.message));},2500);return()=>clearInterval(timer);},[refresh]);
+  useEffect(()=>{snapshot.current={projects:'',project:'',job:''};setProject(null);setJob(null);setUploadProgress(null);setSettings(null);setAd(null);setShowCandidates(false);setError('');void refresh().catch(e=>setError(e.message));void request<{aiReady:boolean}>(`${api}/config`).then(value=>setReady(value.aiReady)).catch(e=>setError(e.message));},[refresh]);
+  useEffect(()=>{const timer=setInterval(()=>{
+    // A slow server must not pile up overlapping requests.
+    if(document.visibilityState!=='visible'||polling.current)return;
+    polling.current=true;void refresh().catch(e=>setError(e.message)).finally(()=>{polling.current=false;});
+  },2500);return()=>clearInterval(timer);},[refresh]);
   useEffect(()=>()=>controller.current?.abort(),[]);
   useEffect(()=>{if(project?.settings)setSettings(project.settings);if(project?.currentVersion){setShowCandidates(false);document.querySelector('.ai-review')?.scrollIntoView({block:'start',behavior:'auto'});}},[project?.currentVersion]);
   useEffect(()=>{setAd(project?.ad||null);},[project?.ad?.fileId,project?.currentVersion]);

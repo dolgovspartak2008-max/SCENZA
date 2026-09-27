@@ -20,6 +20,7 @@ export function AuthModal({ open, mode, setMode, close, copy, selection, onPlanC
   const [config, setConfig] = useState<AuthConfig | null>(null);
   const emailCodeLength = config?.emailCodeLength === 8 ? 8 : 6;
   const [localStudioAllowed, setLocalStudioAllowed] = useState(false);
+  const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -42,7 +43,7 @@ export function AuthModal({ open, mode, setMode, close, copy, selection, onPlanC
   useEffect(() => {
     generation.current++;
     let active = true;
-    if (!open) { setConfig(null); setPassword(''); setCode(''); setChallengeId(''); setError(''); setErrors({}); setBusy(false); setReset(false); setTermsAccepted(false); setDataConsent(false); setTelegramChallenge(null); setTelegramVerified(false); setSupportOpen(false); setLocalStudioAllowed(false); return; }
+    if (!open) { setConfig(null); setName(''); setPassword(''); setCode(''); setChallengeId(''); setError(''); setErrors({}); setBusy(false); setReset(false); setTermsAccepted(false); setDataConsent(false); setTelegramChallenge(null); setTelegramVerified(false); setSupportOpen(false); setLocalStudioAllowed(false); return; }
     setConfig(null);
     Promise.all([authRequest<AuthConfig>('config'), authRequest<{ user: Account | null; localStudioAllowed?: boolean }>('session')])
       .then(([next, session]) => { if (active) { setConfig(next); accountChangeRef.current(session.user); setLocalStudioAllowed(session.localStudioAllowed === true); } })
@@ -50,7 +51,7 @@ export function AuthModal({ open, mode, setMode, close, copy, selection, onPlanC
     return () => { active = false; generation.current++; };
   }, [open]);
   function changeMode(next: 'login' | 'register') {
-    generation.current++; setMode(next); setReset(false); setChallengeId(''); setCode(''); setPassword(''); setError(''); setErrors({}); setTermsAccepted(false); setDataConsent(false); setTelegramChallenge(null); setTelegramVerified(false);
+    generation.current++; setMode(next); setReset(false); setChallengeId(''); setCode(''); setName(''); setPassword(''); setError(''); setErrors({}); setTermsAccepted(false); setDataConsent(false); setTelegramChallenge(null); setTelegramVerified(false);
   }
   function accepted() {
     if (effectiveMode === 'register' && (!termsAccepted || !dataConsent)) {
@@ -130,7 +131,7 @@ export function AuthModal({ open, mode, setMode, close, copy, selection, onPlanC
   const trialAccess = !account?.accessSource || account.accessSource === 'trial';
   return <><Dialog open={open} onClose={close} title={title} closeLabel={copy.close} restoreFocus={restoreFocus} className="scenza-auth-dialog">
     {account ? <div className="scenza-account">
-      <ShieldCheck size={32} /><h2>{title}</h2><p>{account.email || account.name}</p>
+      <ShieldCheck size={32} /><h2>{title}</h2><p>{account.name || account.email}</p>
       {account.telegramUserId && <p>Telegram ID: {account.telegramUserId}</p>}
       {account.blocked && <p role="status">{t('Обработка видео заблокирована: ', 'Video processing is blocked: ')}{account.blockReason || t('Обратитесь в поддержку.', 'Contact support.')}</p>}
       <button type="button" className="scenza-auth-text-button" onClick={() => setSupportOpen(true)}>{t('Поддержка', 'Support')}</button>
@@ -150,10 +151,11 @@ export function AuthModal({ open, mode, setMode, close, copy, selection, onPlanC
       <form id="scenza-auth-form" role="tabpanel" aria-labelledby={`auth-tab-${mode}`} noValidate onSubmit={event => {
         event.preventDefault(); if (!accepted()) return; setTelegramChallenge(null);
         if (challengeId) { if (code.length !== emailCodeLength || !/^\d+$/.test(code)) { setError(t(`Введите ${emailCodeLength} цифр из письма.`, `Enter the ${emailCodeLength}-digit email code.`)); return; } void run(() => authRequest<AuthResult>('email/verify', { challengeId, code })); return; }
-        const invalid = validateAuth({ email, password }); setErrors(invalid); if (Object.keys(invalid).length) { document.getElementById(invalid.email ? 'scenza-email' : 'scenza-password')?.focus(); return; }
-        void run(() => authAdapter.submit(effectiveMode, { email, password }, { remember, termsAccepted, dataConsent }));
+        const invalid = validateAuth({ email, password, name, requireName: mode === 'register' }); setErrors(invalid); if (Object.keys(invalid).length) { document.getElementById(invalid.name ? 'scenza-name' : invalid.email ? 'scenza-email' : 'scenza-password')?.focus(); return; }
+        void run(() => authAdapter.submit(effectiveMode, { email, password, ...(mode === 'register' ? { name: name.trim() } : {}) }, { remember, termsAccepted, dataConsent }));
       }}>
         {challengeId ? <><label htmlFor="scenza-code">{t('Код из письма', 'Email code')}</label><input id="scenza-code" inputMode="numeric" autoComplete="one-time-code" maxLength={emailCodeLength} value={code} onChange={event => setCode(event.target.value.replace(/\D/g, ''))} autoFocus /><button type="button" className="scenza-auth-text-button" onClick={() => { setChallengeId(''); setCode(''); setError(''); }}>{t('Указать другую почту или запросить новый код', 'Change email or request another code')}</button></> : <>
+          {mode === 'register' && <><label htmlFor="scenza-name">{copy.auth.name}</label><div className="scenza-auth-input"><UserRound size={19} /><input id="scenza-name" type="text" autoComplete="nickname" maxLength={60} value={name} placeholder={copy.auth.namePlaceholder} onChange={event => setName(event.target.value)} aria-invalid={!!errors.name} aria-describedby={errors.name ? 'name-error' : undefined} /></div>{errors.name && <p className="scenza-field-error" id="name-error" role="alert">{copy.auth.invalidName}</p>}</>}
           <label htmlFor="scenza-email">{copy.auth.email}</label><div className="scenza-auth-input"><Mail size={19} /><input id="scenza-email" type="email" autoComplete="email" maxLength={254} value={email} placeholder="you@example.com" onChange={event => setEmail(event.target.value)} aria-invalid={!!errors.email} aria-describedby={errors.email ? 'email-error' : undefined} /></div>{errors.email && <p className="scenza-field-error" id="email-error" role="alert">{copy.auth.invalidEmail}</p>}
           <label htmlFor="scenza-password">{reset ? t('Новый пароль', 'New password') : copy.auth.password}</label><div className="scenza-auth-input"><LockKeyhole size={19} /><input id="scenza-password" type={showPassword ? 'text' : 'password'} autoComplete={mode === 'register' || reset ? 'new-password' : 'current-password'} maxLength={128} value={password} placeholder={copy.auth.passwordPlaceholder} onChange={event => setPassword(event.target.value)} aria-invalid={!!errors.password} aria-describedby={errors.password ? 'password-error' : undefined} /><button type="button" aria-label={showPassword ? t('Скрыть пароль', 'Hide password') : t('Показать пароль', 'Show password')} aria-pressed={showPassword} onClick={() => setShowPassword(!showPassword)}>{showPassword ? <EyeOff size={20} /> : <Eye size={20} />}</button></div>{errors.password && <p className="scenza-field-error" id="password-error" role="alert">{t('Пароль должен содержать не менее 8 символов.', 'Use at least 8 characters.')}</p>}
           {mode === 'login' && <div className="scenza-auth-options"><label><input type="checkbox" checked={remember} onChange={event => setRemember(event.target.checked)} />{t('Запомнить меня', 'Remember me')}</label><button type="button" disabled={busy} onClick={() => { generation.current++; setTelegramChallenge(null); setReset(!reset); setPassword(''); setError(''); }}>{reset ? t('Вернуться ко входу', 'Back to login') : t('Забыли пароль?', 'Forgot password?')}</button></div>}

@@ -32,7 +32,7 @@ test('email registration requires browser-bound verified Telegram, rechecks memb
   let member = true;
   const checked = [];
   const f = await fixture(t, { telegramMembership: async id => { checked.push(id); return member; } });
-  const input = { mode: 'register', email: 'linked@example.com', password: 'password123', ...accepted, telegramUserId: '777', subscribed: true };
+  const input = { mode: 'register', name: 'Test User', email: 'linked@example.com', password: 'password123', ...accepted, telegramUserId: '777', subscribed: true };
   const start = await f.call('email/start', input);
   assert.equal(start.body.telegramRequired, true);
   assert.equal(f.mail.length, 0);
@@ -122,7 +122,7 @@ test('custom access-day promos enforce expiration, new-user restriction and dele
 test('subscription failure does not consume external email OTP; proof lasts through the email window', async t => {
   let member = true, verifies = 0, clock = Date.now();
   const f = await fixture(t, { now: () => clock, telegramMembership: async () => member, emailAuth: { send: async () => {}, verify: async () => { verifies++; } } });
-  const input = { mode: 'register', email: 'external@example.com', password: 'password123', ...accepted };
+  const input = { mode: 'register', name: 'Test User', email: 'external@example.com', password: 'password123', ...accepted };
   const start = await f.call('email/start', input);
   const token = new URL(start.body.url).searchParams.get('start').slice(6);
   await f.auth.bots.beginWebsiteLogin(token, 42); await f.auth.bots.confirmWebsiteLogin(token, 42);
@@ -176,7 +176,7 @@ test('signed OAuth registration checks membership and existing accounts can stil
 
 test('Telegram email proof names the destination and cannot be reused for another email', async t => {
   const f = await fixture(t, { telegramMembership: async () => true });
-  const input = { mode: 'register', email: 'intended@example.com', password: 'password123', ...accepted };
+  const input = { mode: 'register', name: 'Test User', email: 'intended@example.com', password: 'password123', ...accepted };
   const start = await f.call('email/start', input);
   const token = new URL(start.body.url).searchParams.get('start').slice(6);
   const prompt = await f.auth.bots.beginWebsiteLogin(token, 42);

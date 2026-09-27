@@ -179,6 +179,7 @@ try {
 
   await page.getByRole('tab', { name: 'Регистрация', exact: true }).click();
   const dialog = page.getByRole('dialog');
+  await dialog.locator('#scenza-name').fill('Public Browser');
   await dialog.locator('#scenza-email').fill('public-browser@example.com');
   await dialog.locator('#scenza-password').fill('browser-password-42');
   await dialog.getByRole('checkbox').nth(0).check();
@@ -189,7 +190,7 @@ try {
   await page.locator('#scenza-code').fill(inbox[0].code);
   await page.getByRole('button', { name: 'Подтвердить и войти', exact: true }).click();
   await studio('public-browser@example.com');
-  await account('public-browser@example.com');
+  await account('Public Browser');
   await logout();
   assert.deepEqual(externalRequests, [], 'All frontend requests stay on intercepted test origins');
   assert.deepEqual(errors, [], 'No browser errors');

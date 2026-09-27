@@ -1,7 +1,8 @@
-export type AuthInput = { email: string; password: string };
-export type AuthFieldErrors = Partial<Record<keyof AuthInput, 'invalidEmail' | 'shortPassword'>>;
-export function validateAuth(input: AuthInput): AuthFieldErrors {
+export type AuthInput = { email: string; password: string; name?: string };
+export type AuthFieldErrors = Partial<Record<'email' | 'password' | 'name', 'invalidEmail' | 'shortPassword' | 'invalidName'>>;
+export function validateAuth(input: AuthInput & { requireName?: boolean }): AuthFieldErrors {
   return {
+    ...(input.requireName && !(input.name ?? '').trim() ? { name: 'invalidName' as const } : {}),
     ...(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email.trim()) ? { email: 'invalidEmail' as const } : {}),
     ...(input.password.length < 8 ? { password: 'shortPassword' as const } : {}),
   };

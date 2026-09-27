@@ -19,13 +19,19 @@ export const ParticleBackground = memo(function ParticleBackground() {
     let mouse: { x: number; y: number } | null = null;
     const accent = getComputedStyle(canvas).getPropertyValue('--accent').trim() || '#45f0d6';
 
+    // Lines are grouped into a few opacity buckets so each frame issues a handful of stroke calls instead of hundreds.
+    const LINE_BUCKETS = 6;
+    const buckets: number[][] = Array.from({ length: LINE_BUCKETS }, () => []);
     const draw = (delta: number) => {
       ctx.clearRect(0, 0, width, height);
       ctx.fillStyle = accent;
       ctx.strokeStyle = accent;
       ctx.lineWidth = 0.8;
       const distanceLimit = width < 600 ? 125 : 175;
+      const limitSquared = distanceLimit * distanceLimit;
 
+      ctx.globalAlpha = 0.58;
+      ctx.beginPath();
       for (const particle of particles) {
         particle.x += particle.vx * delta;
         particle.y += particle.vy * delta;
@@ -47,33 +53,45 @@ export const ParticleBackground = memo(function ParticleBackground() {
           particle.vy *= -1;
           particle.y = Math.max(0, Math.min(height, particle.y));
         }
-        ctx.globalAlpha = 0.58;
-        ctx.beginPath();
+        ctx.moveTo(particle.x + particle.radius, particle.y);
         ctx.arc(particle.x, particle.y, particle.radius, 0, Math.PI * 2);
-        ctx.fill();
       }
+      ctx.fill();
 
-      // Pair scan stays bounded by the 110-particle cap.
+      // Pair scan stays bounded by the 110-particle cap; squared distances avoid a sqrt for far pairs.
+      for (const bucket of buckets) bucket.length = 0;
       for (let a = 0; a < particles.length; a++) {
+        const first = particles[a];
         for (let b = a + 1; b < particles.length; b++) {
-          const first = particles[a];
           const second = particles[b];
-          const distance = Math.hypot(first.x - second.x, first.y - second.y);
-          if (distance >= distanceLimit) continue;
-          ctx.globalAlpha = (1 - distance / distanceLimit) * 0.32;
-          ctx.beginPath();
-          ctx.moveTo(first.x, first.y);
-          ctx.lineTo(second.x, second.y);
-          ctx.stroke();
+          const dx = first.x - second.x;
+          const dy = first.y - second.y;
+          const squared = dx * dx + dy * dy;
+          if (squared >= limitSquared) continue;
+          const strength = 1 - Math.sqrt(squared) / distanceLimit;
+          buckets[Math.min(LINE_BUCKETS - 1, Math.floor(strength * LINE_BUCKETS))].push(a, b);
         }
       }
+      buckets.forEach((bucket, index) => {
+        if (!bucket.length) return;
+        ctx.globalAlpha = (index + 0.5) / LINE_BUCKETS * 0.32;
+        ctx.beginPath();
+        for (let i = 0; i < bucket.length; i += 2) {
+          const first = particles[bucket[i]];
+          const second = particles[bucket[i + 1]];
+          ctx.moveTo(first.x, first.y);
+          ctx.lineTo(second.x, second.y);
+        }
+        ctx.stroke();
+      });
       ctx.globalAlpha = 1;
     };
 
     const resize = () => {
       const nextWidth = canvas.clientWidth;
       const nextHeight = canvas.clientHeight;
-      const ratio = Math.min(window.devicePixelRatio || 1, 2);
+      // A soft, full-screen background does not need retina resolution; 1.5x keeps it sharp at far less fill cost.
+      const ratio = Math.min(window.devicePixelRatio || 1, 1.5);
       if (nextWidth === width && nextHeight === height && canvas.width === Math.round(width * ratio)) return;
       const previousSize = sizeRef.current;
       if (previousSize.width && previousSize.height && previousSize.width !== nextWidth) {
