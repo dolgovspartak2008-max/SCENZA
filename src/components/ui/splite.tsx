@@ -4,8 +4,19 @@ import type { Application } from '@splinetool/runtime';
 import { RotateCcw } from 'lucide-react';
 import { useMotionActivity } from './use-motion-activity';
 
-const Spline = lazy(() => import('@splinetool/react-spline'));
 const robotScene = 'https://prod.spline.design/kZDDjO5HuC9GJUM2/scene.splinecode';
+// Start the runtime chunk and the scene download as soon as the landing module loads, in parallel with the rest of the page.
+const loadSpline = () => import('@splinetool/react-spline');
+const splineModule = typeof window === 'undefined' || window.matchMedia('(prefers-reduced-motion: reduce)').matches ? null : loadSpline();
+if (splineModule && !document.querySelector(`link[href="${robotScene}"]`)) {
+  for (const [rel, href] of [['preconnect', 'https://prod.spline.design'], ['preload', robotScene]]) {
+    const link = document.createElement('link');
+    link.rel = rel; link.href = href; link.crossOrigin = 'anonymous';
+    if (rel === 'preload') link.as = 'fetch';
+    document.head.append(link);
+  }
+}
+const Spline = lazy(() => splineModule ?? loadSpline());
 
 class SceneBoundary extends Component<{ children: ReactNode; fallback: ReactNode; onError: () => void }, { failed: boolean }> {
   state = { failed: false };

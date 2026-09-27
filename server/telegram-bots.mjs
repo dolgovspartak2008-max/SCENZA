@@ -14,7 +14,7 @@ const termsNotice = `${ownerNotice}\nБот SCENZA создаёт аккаунт
 const privacyNotice = `${ownerNotice}\nЦель обработки — создание аккаунта SCENZA и учёт доступа, входов и промокодов. Данные: Telegram ID, имя, username (если задан), сведения о доступе и технических действиях аккаунта. Действия: получение, запись, хранение, использование, изменение и удаление. Аккаунты хранятся локально на компьютере владельца; сервер ещё не выбран. Telegram также обрабатывает сообщения по своим условиям. Рекламные рассылки и платежи не подключены. Данные аккаунта хранятся до его удаления; сроки хранения технических журналов ещё уточняются. Для отзыва согласия или запроса удаления: dolgovspartak2008@gmail.com. После отзыва регистрация и обслуживание аккаунта могут стать невозможны. Полные документы сайта пока являются проектами.`;
 function logDetail(value) {
   if (!value || typeof value !== 'object') return '';
-  const labels = { days: 'Дни', role: 'Роль', maxUses: 'Активации', promoId: 'ID промокода', provider: 'Вход', source: 'Источник', method: 'Метод', route: 'Раздел', status: 'Результат' };
+  const labels = { days: 'Дни', role: 'Роль', maxUses: 'Активации', promoId: 'ID промокода', provider: 'Вход', source: 'Источник', method: 'Метод', route: 'Раздел', status: 'Результат', plan: 'Тариф', tokens: 'Токены', referredBy: 'Пригласил' };
   return Object.entries(labels).filter(([key]) => Object.hasOwn(value, key)).map(([key, label]) => `${label}: ${clean(value[key])}`).join('; ');
 }
 function publicSite(value) {
@@ -224,6 +224,7 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
     if (!user) return send('admin', id, 'Пользователь не найден.');
     const rows = [[button('Журнал аккаунта', `logs:${user.id}`)]];
     if (owner) rows.push([button('Доступ +7 дней', `grant:${user.id}:7`), button('Доступ +30 дней', `grant:${user.id}:30`)],
+      [button('Старт · 75 ток.', `plan:${user.id}:start`), button('Про · 170 ток.', `plan:${user.id}:pro`), button('Бизнес · 500 ток.', `plan:${user.id}:business`)],
       [button(user.blocked ? 'Разблокировать' : 'Заблокировать', `${user.blocked ? 'unblock' : 'block'}:${user.id}`)]);
     rows.push([button('К списку', 'users:0')], [button('Главное меню', 'adm:home')]);
     const details = service.panel ? await service.panel.user(id, user.id).catch(() => null) : null;
@@ -277,7 +278,7 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
     }
     const action = data?.split(':')[0] || command.slice(1);
     if (action === 'role') return send('admin', id, 'Админ-панель доступна только владельцу. Назначение других администраторов не поддерживается.');
-    if (['grant', 'block', 'unblock', 'promo', 'revoke'].includes(action)) {
+    if (['grant', 'block', 'unblock', 'promo', 'revoke', 'plan'].includes(action)) {
       if (!owner) return send('admin', id, 'Изменения доступны только владельцу.');
       const values = data ? data.split(':').slice(1) : args;
       let method, params, description, reason;
@@ -292,7 +293,11 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
         if (!values[0]) return send('admin', id, 'Укажите ID аккаунта или Telegram ID после команды.');
         const user = await service.user(values[0]);
         if (!user) return send('admin', id, 'Пользователь не найден.');
-        if (action === 'grant') {
+        if (action === 'plan') {
+          const plans = { start: 'Старт · 75 токенов', pro: 'Про · 170 токенов', business: 'Бизнес · 500 токенов' };
+          if (!plans[values[1]]) return send('admin', id, 'Формат: /plan ID start|pro|business');
+          method = 'activatePlan'; params = [user.id, values[1]]; description = `Активировать тариф ${plans[values[1]]} и +30 дней доступа после оплаты`;
+        } else if (action === 'grant') {
           const days = Number(values[1]);
           if (!Number.isSafeInteger(days) || days < 1 || days > 365) return send('admin', id, 'Формат: /grant ID ДНИ. Допустимо 1–365 дней.');
           method = 'grant'; params = [user.id, days]; description = `Добавить ${days} дней доступа`;
@@ -322,8 +327,8 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
     if (!person || !Number.isSafeInteger(person.id) || !Number.isSafeInteger(update.update_id)) return;
     if (singleBot && type === 'client') {
       const command = (message?.text || '').trim().split(/\s/)[0].split('@')[0].toLowerCase();
-      const adminCommand = /^\/(?:admin|users|find|logs|grant|block|unblock|role|promo|promos|revoke)$/.test(command);
-      const adminCallback = /^(?:adm:|admin$|admincancel$|users:|user:|logs:|grant:|block:|unblock:|role:|promo:|promos(?::|$)|revoke:|confirm:)/.test(callback?.data || '');
+      const adminCommand = /^\/(?:admin|users|find|logs|grant|plan|block|unblock|role|promo|promos|revoke)$/.test(command);
+      const adminCallback = /^(?:adm:|admin$|admincancel$|users:|user:|logs:|grant:|plan:|block:|unblock:|role:|promo:|promos(?::|$)|revoke:|confirm:)/.test(callback?.data || '');
       if (callback ? adminCallback : adminCommand || panel?.hasPending(person.id)) type = 'admin';
     }
     // Recheck current privileges even for old buttons and private-chat mismatches.

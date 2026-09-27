@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mail, Send, ShieldCheck, UserRound, UserRoundPlus } from 'lucide-react';
 import { Dialog } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { authAdapter, authRequest, validateAuth } from './auth';
+import { authAdapter, authRequest, savedReferral, validateAuth } from './auth';
 import type { Account, AuthConfig, AuthFieldErrors, AuthMode, AuthResult } from './auth';
 import { demoPlans, planPrice } from './plans';
 import type { PlanSelection } from './plans';
@@ -152,7 +152,7 @@ export function AuthModal({ open, mode, setMode, close, copy, selection, onPlanC
         event.preventDefault(); if (!accepted()) return; setTelegramChallenge(null);
         if (challengeId) { if (code.length !== emailCodeLength || !/^\d+$/.test(code)) { setError(t(`Введите ${emailCodeLength} цифр из письма.`, `Enter the ${emailCodeLength}-digit email code.`)); return; } void run(() => authRequest<AuthResult>('email/verify', { challengeId, code })); return; }
         const invalid = validateAuth({ email, password, name, requireName: mode === 'register' }); setErrors(invalid); if (Object.keys(invalid).length) { document.getElementById(invalid.name ? 'scenza-name' : invalid.email ? 'scenza-email' : 'scenza-password')?.focus(); return; }
-        void run(() => authAdapter.submit(effectiveMode, { email, password, ...(mode === 'register' ? { name: name.trim() } : {}) }, { remember, termsAccepted, dataConsent }));
+        void run(() => authAdapter.submit(effectiveMode, { email, password, ...(mode === 'register' ? { name: name.trim(), ref: savedReferral() } : {}) }, { remember, termsAccepted, dataConsent }));
       }}>
         {challengeId ? <><label htmlFor="scenza-code">{t('Код из письма', 'Email code')}</label><input id="scenza-code" inputMode="numeric" autoComplete="one-time-code" maxLength={emailCodeLength} value={code} onChange={event => setCode(event.target.value.replace(/\D/g, ''))} autoFocus /><button type="button" className="scenza-auth-text-button" onClick={() => { setChallengeId(''); setCode(''); setError(''); }}>{t('Указать другую почту или запросить новый код', 'Change email or request another code')}</button></> : <>
           {mode === 'register' && <><label htmlFor="scenza-name">{copy.auth.name}</label><div className="scenza-auth-input"><UserRound size={19} /><input id="scenza-name" type="text" autoComplete="nickname" maxLength={60} value={name} placeholder={copy.auth.namePlaceholder} onChange={event => setName(event.target.value)} aria-invalid={!!errors.name} aria-describedby={errors.name ? 'name-error' : undefined} /></div>{errors.name && <p className="scenza-field-error" id="name-error" role="alert">{copy.auth.invalidName}</p>}</>}

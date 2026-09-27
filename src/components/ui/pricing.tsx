@@ -5,7 +5,7 @@ import NumberFlow from '@number-flow/react';
 import { ArrowUpRight, Check, Sparkles } from 'lucide-react';
 import { Button } from './button';
 import { useMotionActivity } from './use-motion-activity';
-import { demoPlans, planPrice, tokenDiscount, tokenPrice } from '@/landing/plans';
+import { demoPlans, planPrice, planSaving, tokenDiscount, tokenPrice } from '@/landing/plans';
 import type { Language, PlanId } from '@/landing/plans';
 import './animations.css';
 
@@ -15,6 +15,7 @@ export interface PricingCopy {
   recommended: string;
   perMonth: string;
   tokens: string;
+  saving: string;
   free: string;
   choose: string;
   featuresLabel: string;
@@ -91,7 +92,7 @@ export function PricingSection({ language, copy, selectedPlan, onPick, onSelect 
               {language !== 'en' && <span className="scenza-price-currency">₽</span>}
               <span className="scenza-price-period">{plan.id === 'trial' ? copy.free : copy.perMonth}</span>
             </div>
-            <p className="scenza-annual-total">{plan.tokens ? copy.tokens.replace('{tokens}', String(plan.tokens)).replace('{price}', money.format(tokenPrice(plan, language))) : '\u00a0'}</p>
+            <p className="scenza-annual-total">{plan.tokens ? copy.tokens.replace('{tokens}', String(plan.tokens)).replace('{price}', money.format(tokenPrice(plan, language))) : '\u00a0'}{planSaving(plan, language) > 0 && <strong className="scenza-plan-saving">{copy.saving.replace('{amount}', money.format(planSaving(plan, language)))}</strong>}</p>
             <ul className="scenza-plan-features" aria-label={copy.featuresLabel}>{details.features.map((feature) => <li key={feature}><Check size={15} aria-hidden="true" /><span>{feature}</span></li>)}</ul>
             <Button className="scenza-plan-cta" variant={selected ? 'default' : 'outline'} aria-pressed={selected} onClick={(event) => { event.stopPropagation(); onSelect(plan.id); }}>{selected && <Check size={15} aria-hidden="true" />}{details.cta ?? copy.choose}<ArrowUpRight size={15} aria-hidden="true" /></Button>
           </motion.article>;

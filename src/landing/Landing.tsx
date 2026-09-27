@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowRight, Play, Menu, X, Plus, ScanLine, Captions, RectangleVertical, Download, Film, ArrowUpRight, Maximize } from 'lucide-react';
+import { ArrowRight, Play, Menu, X, Plus, ScanLine, Captions, RectangleVertical, Download, Film, ArrowUpRight, Maximize, Infinity as InfinityIcon, CirclePause, Clapperboard, Hash, Coins, Gift } from 'lucide-react';
 import { Logo } from '../Icon';
 import { ShinyButton as Button } from '@/components/ui/shiny-button';
 import { PageLoader } from '@/components/ui/page-loader';
@@ -15,7 +15,7 @@ import { parseSelection } from './plans';
 import { demoPlans } from './plans';
 import type { Language, PlanId, PlanSelection } from './plans';
 import { AuthModal } from './AuthModal';
-import { authRequest } from './auth';
+import { authRequest, rememberReferral } from './auth';
 import type { Account } from './auth';
 import { LegalLinks } from './LegalLinks';
 import { ProfileMenu } from './ProfileMenu';
@@ -29,6 +29,7 @@ const examples = [
   { id: 'platform-example-4', duration: '00:39' },
 ];
 const featureIcons = [ScanLine, Captions, RectangleVertical, Download];
+const advantageIcons = [InfinityIcon, CirclePause, Clapperboard, Hash, Coins];
 export const isLocalStudio = () => ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
 
 function VideoExample({ id, duration, title, type, watch, language, onExpand }: { id: string; duration: string; title: string; type: string; watch: string; language: Language; onExpand: () => void }) {
@@ -72,6 +73,7 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
   const [videoIndex, setVideoIndex] = useState<number | null>(null);
   const [demoNotice, setDemoNotice] = useState(false);
   const [planNotice, setPlanNotice] = useState<PlanId | null>(null);
+  const [inviteCopied, setInviteCopied] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const authFocus = useRef<HTMLElement | null>(null);
   const pricingRef = useRef<HTMLElement>(null);
@@ -89,6 +91,7 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
     const observer = new IntersectionObserver(([entry]) => { if (entry.isIntersecting) { setPricingVisible(true); observer.disconnect(); } }, { rootMargin: '500px' });
     observer.observe(element); return () => observer.disconnect();
   }, []);
+  useEffect(rememberReferral, []);
   useEffect(() => {
     if (!menuOpen) return;
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { setMenuOpen(false); menuButton.current?.focus(); } };
@@ -117,11 +120,16 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
     else if (mode === 'register' && !selection) updatePlan({ planId: 'trial', period: 'month' });
   }
   // Payments are not connected: a signed-in visitor cannot activate a paid plan without the administrator.
+  async function shareInvite() {
+    if (!account?.referralCode) { openAuth('register'); return; }
+    try { await navigator.clipboard.writeText(`${location.origin}/?ref=${account.referralCode}`); setInviteCopied(true); window.setTimeout(() => setInviteCopied(false), 2500); }
+    catch { setInviteCopied(false); }
+  }
   function choosePlan(planId: PlanId) { if (account && planId !== 'trial') { updatePlan({ planId, period: 'month' }); setPlanNotice(planId); return; } openAuth('register', { planId, period: 'month' }); }
   const links = [{ id: 'demo', label: copy.nav.features }, { id: 'workflow', label: copy.nav.how }, { id: 'pricing', label: copy.nav.pricing }, { id: 'faq', label: copy.nav.faq }];
   const languageControl = <div className="scenza-language" role="group" aria-label={copy.languageLabel}><button onClick={() => setLanguage('ru')} aria-pressed={language === 'ru'} lang="ru">RU</button><button onClick={() => setLanguage('en')} aria-pressed={language === 'en'} lang="en">EN</button></div>;
 
-  const accountButton = account ? <ProfileMenu account={account} language={language} onAccountChange={setAccount} onPricing={() => { setMenuOpen(false); document.getElementById('pricing')?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); }} /> : <Button variant="outline" size="sm" onClick={() => openAuth('login')}>{copy.login}</Button>;
+  const accountButton = account ? <ProfileMenu account={account} language={language} onLanguageChange={setLanguage} onAccountChange={setAccount} onPricing={() => { setMenuOpen(false); document.getElementById('pricing')?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); }} /> : <Button variant="outline" size="sm" onClick={() => openAuth('login')}>{copy.login}</Button>;
   return <div className="scenza-landing" inert={!robotSettled}>
     <ParticleBackground />
     <PageLoader open={!robotSettled} onContinue={finishLoading} language={language} />
@@ -147,6 +155,11 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
         <div className="scenza-workflow-intro"><h2 id="workflow-title">{copy.automation.title}</h2><p>{copy.automation.description}</p></div>
         <ol className="scenza-workflow-steps">{copy.automation.steps.map((step, index) => <li key={step.title}><span className="scenza-workflow-number" aria-hidden="true">{String(index + 1).padStart(2, '0')}</span><div><h3>{step.title}</h3><p>{step.text}</p></div></li>)}</ol>
         <div className="scenza-workflow-value"><h3>{copy.automation.valueTitle}</h3><div><p>{copy.automation.value}</p><p className="scenza-workflow-note">{copy.automation.note}</p></div></div>
+      </section>
+
+      <section id="advantages" tabIndex={-1} data-section-label={copy.advantages.label} aria-labelledby="advantages-title" className="scenza-container scenza-advantages"><div className="scenza-section-title"><div><h2 id="advantages-title">{copy.advantages.title}</h2><p>{copy.advantages.description}</p></div></div>
+        <ul className="scenza-advantages-grid">{copy.advantages.items.map((item, index) => { const AdvantageIcon = advantageIcons[index]; return <li key={item.title}><span className="scenza-feature-icon"><AdvantageIcon size={22} aria-hidden="true" /></span><h3>{item.title}</h3><p>{item.text}</p></li>; })}</ul>
+        <div className="scenza-referral"><span className="scenza-feature-icon"><Gift size={24} aria-hidden="true" /></span><div><h3>{copy.referral.title}</h3><p>{copy.referral.text}</p></div><Button onClick={() => void shareInvite()}>{inviteCopied ? copy.referral.copied : account ? copy.referral.share : copy.referral.join}</Button><span className="sr-only" role="status">{inviteCopied ? copy.referral.copied : ''}</span></div>
       </section>
 
       <section id="pricing" tabIndex={-1} data-section-label={copy.nav.pricing} ref={pricingRef} className="scenza-container scenza-pricing-section"><div className="scenza-section-title"><div><h2>{copy.pricingTitle}</h2><p>{copy.pricingDescription}</p></div></div>{pricingVisible ? <Suspense fallback={<div className="scenza-pricing-placeholder" aria-label={copy.nav.pricing} />}><PricingSection language={language} copy={copy.pricing} selectedPlan={selection?.planId ?? null} onPick={planId => updatePlan({ planId, period: 'month' })} onSelect={choosePlan} /></Suspense> : <div className="scenza-pricing-placeholder" />}</section>

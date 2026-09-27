@@ -12,10 +12,14 @@ export const demoPlans: DemoPlan[] = [
   { id: 'business', price: 7560, usd: 90, tokens: 500, recommended: false },
 ];
 export const currency = 'RUB';
-const baseTokenPrice = 20;
+const baseTokenPrice = 20, baseTokenUsd = 0.24;
 export const planPrice = (plan: DemoPlan, language: Language) => language === 'en' ? plan.usd : plan.price;
 export function tokenPrice(plan: DemoPlan, language: Language) {
   return plan.tokens ? planPrice(plan, language) / plan.tokens : 0;
+}
+// Savings against buying the same minutes at the Start price.
+export function planSaving(plan: DemoPlan, language: Language) {
+  return plan.tokens ? Math.max(0, Math.round((plan.tokens * (language === 'en' ? baseTokenUsd : baseTokenPrice) - planPrice(plan, language)) * 100) / 100) : 0;
 }
 export function tokenDiscount(plan: DemoPlan) {
   return plan.tokens ? Math.round((1 - plan.price / plan.tokens / baseTokenPrice) * 100) : 0;

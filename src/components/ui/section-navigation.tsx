@@ -3,7 +3,7 @@ import { animate, motion } from 'framer-motion';
 import type { Language } from '@/landing/plans';
 import './section-navigation.css';
 
-// Shorter section jumps keep wheel scrolling responsive: input is held only while a jump is in flight.
+// Wheel and touch scrolling stay native; animated jumps happen only from the navigation, links and arrow keys.
 const SECTION_MOVE_MS = 480;
 
 type Section = { id: string; label: string; element: HTMLElement; top: number; height: number };
@@ -25,9 +25,6 @@ export function SectionNavigation({ language, disabled = false }: { language: La
     let current = 0;
     let locked = false;
     let frame = 0;
-    let wheelTime = 0;
-    let wheelTotal = 0;
-    let wheelConsumed = false;
     let scrollAnimation: ReturnType<typeof animate> | undefined;
     let reveals: Animation[] = [];
     const headerOffset = () => (document.querySelector('.scenza-header')?.getBoundingClientRect().height ?? 82) + 24;
@@ -126,35 +123,6 @@ export function SectionNavigation({ language, disabled = false }: { language: La
     };
     navigate.current = index => go(index, true);
     const interactive = (target: EventTarget | null) => target instanceof Element && !!target.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), video, audio, [role="slider"], [role="listbox"], [role="tablist"]');
-    const nestedScroll = (target: EventTarget | null, direction: number) => {
-      for (let element = target instanceof HTMLElement ? target : null; element && element !== main && element !== document.body; element = element.parentElement) {
-        if (!/(auto|scroll)/.test(getComputedStyle(element).overflowY) || element.scrollHeight <= element.clientHeight + 1) continue;
-        if (direction > 0 ? element.scrollTop + element.clientHeight < element.scrollHeight - 1 : element.scrollTop > 0) return true;
-      }
-      return false;
-    };
-    const onWheel = (event: WheelEvent) => {
-      if (!desktop.matches || preference.matches || blocked() || event.ctrlKey || event.metaKey || event.shiftKey || event.defaultPrevented || Math.abs(event.deltaX) > Math.abs(event.deltaY) || !event.deltaY || interactive(event.target)) return;
-      const now = performance.now();
-      if (now - wheelTime > 200) { wheelTotal = 0; wheelConsumed = false; }
-      wheelTime = now;
-      if (locked || wheelConsumed) { wheelConsumed = true; event.preventDefault(); return; }
-      const direction = Math.sign(event.deltaY);
-      if (nestedScroll(event.target, direction)) return;
-      const item = items[current];
-      const next = current + direction;
-      if (!item || !items[next]) return;
-      const offset = headerOffset();
-      const fits = item.height <= innerHeight - offset + 2;
-      const atEdge = direction > 0 ? scrollY + innerHeight >= item.top + item.height - 3 : scrollY <= item.top - offset + 3;
-      if (!fits && !atEdge) { wheelTotal = 0; return; }
-      event.preventDefault();
-      const delta = event.deltaY * (event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? innerHeight : 1);
-      wheelTotal = Math.sign(wheelTotal) === direction ? wheelTotal + delta : delta;
-      if (Math.abs(wheelTotal) < 32) return;
-      wheelConsumed = true;
-      go(next, false, direction < 0);
-    };
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && locked) { cancel(); return; }
       if (event.defaultPrevented || blocked() || interactive(event.target) || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
@@ -182,7 +150,6 @@ export function SectionNavigation({ language, disabled = false }: { language: La
     mutations.observe(main, { childList: true });
     window.addEventListener('scroll', onScroll, { passive: true });
     window.addEventListener('resize', refresh);
-    window.addEventListener('wheel', onWheel, { passive: false });
     document.addEventListener('keydown', onKey);
     document.addEventListener('click', onClick);
     window.addEventListener('touchstart', onPointer, { passive: true });
@@ -196,7 +163,6 @@ export function SectionNavigation({ language, disabled = false }: { language: La
       mutations.disconnect();
       window.removeEventListener('scroll', onScroll);
       window.removeEventListener('resize', refresh);
-      window.removeEventListener('wheel', onWheel);
       document.removeEventListener('keydown', onKey);
       document.removeEventListener('click', onClick);
       window.removeEventListener('touchstart', onPointer);

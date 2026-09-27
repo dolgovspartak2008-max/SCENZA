@@ -4,12 +4,14 @@ import { randomBytes, randomInt, randomUUID, scrypt as scryptCallback, timingSaf
 import { promisify } from 'node:util';
 import { isIP } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
+import { PLAN_TOKENS, REFERRAL_BONUS, REFERRAL_SHARE } from './ai/tokens.mjs';
 
 const scrypt = promisify(scryptCallback);
 const DAY = 86400000;
 const VERSION = '2026-09-13-public-1';
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const secret = () => randomBytes(32).toString('base64url');
+const MAX_REFERRALS = 50;
 const digest = value => createHash('sha256').update(value).digest('hex');
 const equal = (left, right) => typeof left === 'string' && typeof right === 'string' && timingSafeEqual(Buffer.from(digest(left)), Buffer.from(digest(right)));
 const cookies = request => Object.fromEntries((request.headers.cookie || '').split(';').map(value => value.trim().split('=')).filter(([name, value]) => name && value));
@@ -36,7 +38,7 @@ async function jsonBody(request) {
   } catch { throw fail('Некорректный запрос.'); }
 }
 
-export async function createAuth({ dataDir, telegramClientId = '', telegramBotUsername = '', telegramMembership, emailDelivery, emailAuth, accountStore, legalReady = false, botRegistrationEnabled = false, ownerTelegramIds = [], secureCookies = false, trustProxy = false, allowedOrigins = [], now = Date.now, fetch: fetcher = globalThis.fetch }) {
+export async function createAuth({ dataDir, telegramClientId = '', telegramBotUsername = '', telegramMembership, emailDelivery, emailAuth, accountStore, legalReady = false, botRegistrationEnabled = false, ownerTelegramIds = [], secureCookies = false, trustProxy = false, allowedOrigins = [], now = Date.now, fetch: fetcher = globalThis.fetch, tokenLedger, onRegister }) {
   if (!dataDir) throw new Error('Auth dataDir is required');
   await fs.mkdir(dataDir, { recursive: true, mode: 0o700 });
   const accountsFile = path.join(dataDir, 'accounts.json');
@@ -111,11 +113,20 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
     if (++entry.count > maximum) throw fail('Слишком много попыток. Попробуйте через 10 минут.', 429);
   }
 
+  const referralCode = id => digest(`ref:${id}`).slice(0, 10);
+  const referrerId = code => typeof code === 'string' && /^[a-f0-9]{10}$/.test(code) ? accounts.find(user => referralCode(user.id) === code)?.id || null : null;
+  // Referral bonuses are granted outside the account snapshot, in the token ledger; failures never block registration.
+  function registered(user) {
+    if (!onRegister) return;
+    const inviter = user.referredBy && accounts.find(item => item.id === user.referredBy);
+    const invited = inviter ? accounts.filter(item => item.referredBy === inviter.id).length : 0;
+    void Promise.resolve(onRegister({ userId: user.id, inviterId: inviter && invited <= MAX_REFERRALS ? inviter.id : null, bonus: REFERRAL_BONUS })).catch(() => console.error('SCENZA: не удалось начислить реферальный бонус.'));
+  }
   function publicUser(user) {
     const extended = Date.parse(user.accessUntil) || 0;
     const trial = Date.parse(user.trialEndsAt) || 0;
     const until = Math.max(extended, trial);
-    return { id: user.id, ...(user.email ? { email: user.email } : {}), ...(user.telegramUserId ? { telegramUserId: user.telegramUserId } : {}), name: user.name, provider: user.provider, createdAt: user.createdAt || null, lastActiveAt: user.lastActiveAt || null, telegramUsername: user.telegramUsername || null, blockReason: user.blockReason || null, role: user.role === 'support' ? 'support' : 'user', blocked: user.blocked === true, trialStartedAt: user.trialStartedAt, trialEndsAt: user.trialEndsAt, accessUntil: until ? new Date(until).toISOString() : null, accessSource: extended >= trial && extended ? user.accessSource || 'grant' : trial ? 'trial' : 'none', accessActive: now() < until };
+    return { id: user.id, ...(user.email ? { email: user.email } : {}), ...(user.telegramUserId ? { telegramUserId: user.telegramUserId } : {}), name: user.name, provider: user.provider, createdAt: user.createdAt || null, lastActiveAt: user.lastActiveAt || null, telegramUsername: user.telegramUsername || null, blockReason: user.blockReason || null, role: user.role === 'support' ? 'support' : 'user', blocked: user.blocked === true, trialStartedAt: user.trialStartedAt, trialEndsAt: user.trialEndsAt, accessUntil: until ? new Date(until).toISOString() : null, accessSource: extended >= trial && extended ? user.accessSource || 'grant' : trial ? 'trial' : 'none', accessActive: now() < until, referralCode: referralCode(user.id), referrals: accounts.filter(item => item.referredBy === user.id).length };
   }
 
   function session(request) {
@@ -367,10 +378,32 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
       const verifiedId = telegramId(id);
       if (!verifiedId) throw fail('Некорректный Telegram ID.');
       cleanup(); rate(`promo:${verifiedId}`, 10);
+      return redeemPromo(eventKey, verifiedId, next => next.find(item => item.telegramUserId === verifiedId), code);
+    },
+    async activatePlan(actorId, userId, planId, eventKey) {
+      ownerOnly(actorId);
+      const tokens = PLAN_TOKENS[planId];
+      if (!tokens) throw fail('Неизвестный тариф.');
+      if (!tokenLedger) throw fail('Учёт токенов не подключён.', 503);
+      const user = await botMutation(eventKey, 'plan.activate', actorId, (next, transaction) => {
+        const target = findUser(next, userId);
+        extend(target, 30, 'plan');
+        audit(transaction, 'plan.activate', actorId, target.id, { plan: planId, tokens });
+        return publicUser(target);
+      });
+      // Fixed ledger ids make a repeated confirmation grant nothing twice.
+      const key = digest(eventKey).slice(0, 24), inviterId = accounts.find(item => item.id === user.id)?.referredBy, share = Math.floor(tokens * REFERRAL_SHARE);
+      await tokenLedger.grant(user.id, tokens, 'purchase', `plan-${key}`, `Тариф ${planId}`);
+      if (inviterId && share) await tokenLedger.grant(inviterId, share, 'referral', `plan-${key}-inviter`, 'Бонус за покупку друга');
+      return user;
+    },
+  };
+
+  function redeemPromo(eventKey, actorId, pick, code) {
       const normalized = typeof code === 'string' ? code.trim().toUpperCase() : '';
-      if (!/^[A-Z0-9_-]{4,32}$/.test(normalized)) throw fail('Промокод недействителен или недоступен.');
-      return botMutation(eventKey, 'promo.redeem', verifiedId, (next, transaction) => {
-        const user = next.find(item => item.telegramUserId === verifiedId);
+      if (!/^[A-Z0-9_-]{4,32}$/.test(normalized)) return Promise.reject(fail('Промокод недействителен или недоступен.'));
+      return botMutation(eventKey, 'promo.redeem', actorId, (next, transaction) => {
+        const user = pick(next);
         if (!user) throw fail('Сначала зарегистрируйтесь.', 403);
         if (user.blocked) throw fail('Доступ к аккаунту заблокирован.', 403);
         const promo = transaction.promos.find(item => item.hash === digest(normalized));
@@ -378,10 +411,11 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
         if (promo.newUsersOnly && (!(Date.parse(user.createdAt) > now() - 7 * DAY) || transaction.promos.some(item => item.userIds.includes(user.id)))) throw fail('Промокод доступен только в первые 7 дней и до первой активации промокода.');
         promo.userIds.push(user.id);
         extend(user, promo.days, 'promo');
-        audit(transaction, 'promo.redeem', verifiedId, user.id, { promoId: promo.id, days: promo.days });
+        audit(transaction, 'promo.redeem', actorId, user.id, { promoId: promo.id, days: promo.days });
         return publicUser(user);
       });
-    },
+  }
+  Object.assign(bots, {
     async recordActivity(userId, event, detail) {
       if (!['studio.read', 'studio.upload', 'studio.import', 'studio.export', 'studio.update', 'studio.telegram_send', 'studio.rejected'].includes(event)) throw fail('Недопустимое событие.');
       const routes = ['/api/health', '/api/projects', '/api/clips', '/api/publications', '/api/settings', '/api/upload', '/api/import', '/api/telegram/send', '/api/projects/:id', '/api/projects/:id/analyze', '/api/projects/:id/export', '/api/projects/:id/banner', '/api/jobs/:id', '/api/jobs/:id/cancel', '/api/publications/:id', '/media/:file', '/downloads/:file', '/unknown'];
@@ -395,7 +429,7 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
         if (important) audit(transaction, event, user.id, user.id, { method: detail.method, route: detail.route, status: detail.status });
       });
     },
-  };
+  });
 
   async function requireMembership(id) {
     if (!telegramId(id) || typeof telegramMembership !== 'function') throw fail('Не удалось проверить подписку на @MediaFlowTech. Повторите позже.', 503);
@@ -448,7 +482,7 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
     if (challenges.size >= 1000) throw fail('Сервис занят. Попробуйте позже.', 503);
     const hashedPassword = await passwordHash(body.password);
     const code = emailAuth ? null : String(randomInt(100000, 1000000));
-    const pending = { telegramUserId: proof?.actor, browserHash: proof?.browserHash, email, password: hashedPassword, purpose: body.mode, userId: existing?.id, consent: accepted, remember: body.remember === true, codeHash: code ? digest(code) : null, expiresAt: now() + 10 * 60000, attempts: 0, name };
+    const pending = { telegramUserId: proof?.actor, browserHash: proof?.browserHash, email, password: hashedPassword, purpose: body.mode, userId: existing?.id, consent: accepted, remember: body.remember === true, codeHash: code ? digest(code) : null, expiresAt: now() + 10 * 60000, attempts: 0, name, referrer: body.mode === 'register' ? referrerId(body.ref) : null };
     if (proof) {
       proof.expiresAt = pending.expiresAt;
       cookie(response, 'scena_telegram_bot', cookies(request).scena_telegram_bot, 600);
@@ -479,6 +513,7 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
       if (pending.purpose === 'register' && browserChallenge(request)?.browserHash !== pending.browserHash) throw fail('Подтвердите Telegram в этой вкладке заново.', 403);
     } finally { pending.verifying = false; }
     challenges.delete(key);
+    let createdUser = null;
     const user = await mutate((next, transaction) => {
       if (pending.purpose === 'register') {
         if (!legalReady) throw fail('Регистрация временно недоступна.', 503);
@@ -490,9 +525,10 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
           audit(transaction, 'account.email_link', linked.id, linked.id);
           return linked;
         }
-        const created = account({ provider: 'email', telegramUserId: pending.telegramUserId, email: pending.email, name: pending.name || pending.email.split('@')[0], password: pending.password, emailVerifiedAt: new Date(now()).toISOString() }, pending.consent);
+        const created = account({ provider: 'email', telegramUserId: pending.telegramUserId, email: pending.email, name: pending.name || pending.email.split('@')[0], password: pending.password, emailVerifiedAt: new Date(now()).toISOString(), ...(pending.referrer ? { referredBy: pending.referrer } : {}) }, pending.consent);
         next.push(created);
-        audit(transaction, 'register', created.id, created.id, { provider: 'email' });
+        audit(transaction, 'register', created.id, created.id, { provider: 'email', ...(pending.referrer ? { referredBy: pending.referrer } : {}) });
+        createdUser = created;
         return created;
       }
       const existing = next.find(item => item.id === pending.userId && item.email === pending.email);
@@ -505,6 +541,7 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
     if (pending.purpose === 'reset') {
       for (const [key, value] of challenges) if (value.email === user.email) challenges.delete(key);
     }
+    if (createdUser) registered(createdUser);
     return signIn(request, response, user, pending.remember, pending.password.hash);
   }
 
@@ -556,6 +593,7 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
     const verifiedId = Number.isSafeInteger(claims.id) && claims.id > 0 ? String(claims.id) : null;
     if (!verifiedId) throw fail('Не удалось подтвердить Telegram ID.', 401);
     if (!accounts.some(item => item.telegramUserId === verifiedId || item.telegramSubject === claims.sub)) await requireMembership(verifiedId);
+    let createdTelegram = null;
     const user = await mutate((next, transaction) => {
       const bySubject = next.find(item => item.telegramSubject === claims.sub);
       const byId = next.find(item => item.telegramUserId === verifiedId);
@@ -568,11 +606,14 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
       }
       if (body.mode !== 'register') throw fail('Аккаунт не найден. Перейдите к регистрации.', 404);
       const accepted = consent(body);
-      const created = account({ provider: 'telegram', telegramSubject: claims.sub, telegramUserId: verifiedId, name: typeof claims.name === 'string' ? claims.name.trim().slice(0, 100) : 'Пользователь Telegram' }, accepted);
+      const referrer = referrerId(body.ref);
+      const created = account({ provider: 'telegram', telegramSubject: claims.sub, telegramUserId: verifiedId, name: typeof claims.name === 'string' ? claims.name.trim().slice(0, 100) : 'Пользователь Telegram', ...(referrer ? { referredBy: referrer } : {}) }, accepted);
       next.push(created);
-      audit(transaction, 'register', created.id, created.id, { provider: 'telegram', source: 'website' });
+      audit(transaction, 'register', created.id, created.id, { provider: 'telegram', source: 'website', ...(referrer ? { referredBy: referrer } : {}) });
+      createdTelegram = created;
       return created;
     });
+    if (createdTelegram) registered(createdTelegram);
     return signIn(request, response, user, body.remember === true);
   }
 
@@ -609,6 +650,12 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
           });
           cookie(response, 'scena_session', '', 0);
           result = { ok: true };
+        } else if (route === '/api/auth/promo') {
+          const current = session(request);
+          if (!current) throw fail('Войдите в аккаунт.', 401);
+          rate(`promo:web:${current.id}`, 10);
+          const code = typeof body.code === 'string' ? body.code.trim().toUpperCase() : '';
+          result = { user: await redeemPromo(`web-promo:${current.id}:${digest(code)}`, current.id, next => next.find(item => item.id === current.id), code) };
         } else if (route === '/api/auth/email/start') result = await emailStart(request, response, body);
         else if (route === '/api/auth/email/verify') result = await emailVerify(request, response, body);
         else if (route === '/api/auth/telegram/bot/start') {

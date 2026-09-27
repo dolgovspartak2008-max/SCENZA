@@ -33,10 +33,16 @@ const adminJob = row => {
   return { ...job, stalled: row.status === 'running' ? !lease || lease <= Date.now() : row.status === 'queued' && Date.parse(row.updated_at) < Date.now() - leaseMs };
 };
 const adminProject = project => ({ id: project.id, ownerId: project.ownerId, status: project.status, duration: project.duration || 0, createdAt: project.createdAt, updatedAt: project.updatedAt, analyzedAt: project.analyzedAt || null, model: project.analysisModel || null, editRequests: Object.keys(project.editCache || {}).length, clips: [...(project.candidates || []).filter(item => item.ready), ...(project.exports || (project.finalFile ? [{ createdAt: project.updatedAt }] : []))].map(item => ({ createdAt: item.createdAt || project.createdAt })) });
+// Token ledger entries share the append-only usage table: 1 token = 1 minute of source video, grants are positive, charges negative.
+const tokenReasons = ['trial', 'purchase', 'grant', 'referral', 'promo', 'analysis', 'refund'];
+function tokenFields(value) {
+  if (!Number.isSafeInteger(value.tokens) || value.tokens === 0 || Math.abs(value.tokens) > 100000 || !tokenReasons.includes(value.reason)) throw new Error('Invalid token entry');
+  return { tokens: value.tokens, reason: value.reason, note: String(value.note || '').slice(0, 120) };
+}
 function usageValue(value) {
   const number = key => Number.isFinite(value[key]) && value[key] >= 0 ? value[key] : null;
   const createdAt = typeof value.createdAt === 'string' && Number.isFinite(Date.parse(value.createdAt)) ? new Date(value.createdAt).toISOString() : new Date().toISOString();
-  return { id: identity(value.id || randomUUID()), ownerId: identity(value.ownerId), projectId: identity(value.projectId), jobId: identity(value.jobId), kind: ['source', 'edit'].includes(value.kind) ? value.kind : 'ai', operation: String(value.operation || '').slice(0, 40), sourceSeconds: number('sourceSeconds'), model: String(value.model || '').slice(0, 120), inputTokens: number('inputTokens'), outputTokens: number('outputTokens'), totalTokens: number('totalTokens'), cost: number('cost'), error: value.error ? String(value.error).slice(0, 120) : null, createdAt };
+  return { id: identity(value.id || randomUUID()), ownerId: identity(value.ownerId), projectId: identity(value.projectId), jobId: identity(value.jobId), kind: ['source', 'edit', 'token'].includes(value.kind) ? value.kind : 'ai', ...(value.kind === 'token' ? tokenFields(value) : {}), operation: String(value.operation || '').slice(0, 40), sourceSeconds: number('sourceSeconds'), model: String(value.model || '').slice(0, 120), inputTokens: number('inputTokens'), outputTokens: number('outputTokens'), totalTokens: number('totalTokens'), cost: number('cost'), error: value.error ? String(value.error).slice(0, 120) : null, createdAt };
 }
 
 function usageMonth(month = new Date().toISOString().slice(0, 7)) {
@@ -48,6 +54,7 @@ function monthlyUsage(rows, month) {
   const result = { month, sourceMinutes: 0, sourceCount: 0, editRequests: 0, ...totals(), models: [] }, models = new Map();
   for (const record of rows) {
     if (!record.createdAt?.startsWith(month + '-')) continue;
+    if (record.kind === 'token') continue;
     if (record.kind === 'source') { result.sourceMinutes += (record.sourceSeconds || 0) / 60; result.sourceCount++; continue; }
     if (record.kind === 'edit') { result.editRequests++; continue; }
     if (!models.has(record.model)) models.set(record.model, { model: record.model, ...totals() });
@@ -101,6 +108,7 @@ export async function createStore({ dataDir, env = process.env }) {
       return { projects: db.prepare('SELECT payload FROM projects').all().map(row => adminProject(decode(row.payload))), jobs: db.prepare('SELECT * FROM jobs ORDER BY updated_at DESC').all().map(adminJob), usage: db.prepare('SELECT payload FROM ai_usage').all().map(row => decode(row.payload)) };
     },
     async recordAiUsage(value) { const record = usageValue(value); db.prepare('INSERT OR IGNORE INTO ai_usage(id,payload) VALUES(?,?)').run(record.id, JSON.stringify(record)); },
+    async ownerTokens(ownerId) { return db.prepare("SELECT payload FROM ai_usage WHERE json_extract(payload,'$.ownerId')=? AND json_extract(payload,'$.kind')='token' ORDER BY json_extract(payload,'$.createdAt')").all(identity(ownerId)).map(row => decode(row.payload)); },
     async ownerMonthlyUsage(ownerId, month) {
       month = usageMonth(month);
       const rows = db.prepare("SELECT payload FROM ai_usage WHERE json_extract(payload,'$.ownerId')=? AND substr(json_extract(payload,'$.createdAt'),1,7)=?").all(identity(ownerId), month);
@@ -230,6 +238,14 @@ function supabaseStore(env) {
       return { projects: projects.map(row => adminProject(row.payload)), jobs: jobs.map(adminJob), usage: usage.map(row => row.payload), usageUnavailable };
     },
     async recordAiUsage(value) { const record = usageValue(value); await request('rpc/scenza_video_record_usage', { p_id: record.id, p_payload: record }); },
+    async ownerTokens(ownerId) {
+      const rows = [];
+      for (let offset = 0; ; offset += 500) {
+        const page = await request(query('scenza_ai_usage', { select: 'id,payload', 'payload->>ownerId': `eq.${identity(ownerId)}`, 'payload->>kind': 'eq.token', order: 'id.asc', limit: '500', offset: String(offset) }));
+        rows.push(...page.map(row => row.payload));
+        if (page.length < 500) return rows.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      }
+    },
     async ownerMonthlyUsage(ownerId, month) {
       month = usageMonth(month);
       const rows = [];

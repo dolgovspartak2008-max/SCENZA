@@ -8,6 +8,7 @@ import { createStorage } from './storage.mjs';
 import { OpenRouterProvider, PRIMARY_VIDEO_MODEL, FAST_EDIT_MODEL, ANALYSIS_VERSION } from './openai.mjs';
 import { analyzeLongVideo } from './analysis.mjs';
 import { ff, run, inspect, normalizeSettings, normalizeAd, timelineDuration, adTotalDuration, render, fail } from './render.mjs';
+import { createTokens } from './tokens.mjs';
 
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -18,7 +19,7 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
   const usageError=()=>{if(!usageWarning)console.warn('SCENZA: учёт расходов AI временно недоступен. Обработка продолжается; проверьте миграцию usage и соединение с БД.');usageWarning=true;};
   const recordUsage=async record=>{await store.recordAiUsage({sourceSeconds:usageJob.sourceSeconds,...record,ownerId:usageJob.ownerId,projectId:usageJob.projectId,jobId:usageJob.id,operation:usageJob.type});usageWarning=false;};
   const ai=provider||new OpenRouterProvider({apiKey:env.OPENROUTER_API_KEY || '',model:env.PRIMARY_VIDEO_MODEL || PRIMARY_VIDEO_MODEL,editModel:env.FAST_EDIT_MODEL || FAST_EDIT_MODEL,onUsage:recordUsage,onUsageError:usageError});
-  const workerId=randomUUID();
+  const workerId=randomUUID(),tokens=createTokens(store);
   python ||= env.SCENZA_PYTHON || path.join(workspace,'.scena','venv',process.platform==='win32'?'Scripts/python.exe':'bin/python');
   let stopping=false;
   async function processJob(job) {
@@ -95,6 +96,8 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
           project.analysisResult=null;project.analysisWindows=[];project.candidates=[];project.analyzedAt=null;
         }
         project.analysisCache=cacheIdentity;
+        // Charge before any paid AI work; the same source is never charged twice.
+        if(!project.analysisResult)await tokens.charge(job.ownerId,project.id,cacheIdentity.source,project.duration);
         if(!project.analysisResult&&project.candidates.length)project.analysisResult={candidates:project.candidates,model:project.analysisModel};
         if(!project.analysisResult && !ai.configured && !provider)throw fail('AI-анализ пока не подключён. Администратору нужно настроить ключ сервиса.',503);
         if(!project.analysis) {

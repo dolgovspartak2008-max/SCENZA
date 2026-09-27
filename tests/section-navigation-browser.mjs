@@ -37,17 +37,11 @@ try {
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await go('hero');
   await page.mouse.move(1050, 600);
-  for (let i = 0; i < 14; i++) await page.mouse.wheel(0, 120);
-  await settled();
-  assert.equal(await current(), '#examples', 'A wheel burst advances only one section');
-  await page.waitForTimeout(240);
-  await page.mouse.wheel(0, -120);
-  await settled();
-  assert.equal(await current(), '#hero', 'Upward wheel returns to previous section');
-  await page.waitForTimeout(240);
-  for (let i = 0; i < 18; i++) { await page.mouse.wheel(0, 4); await page.waitForTimeout(12); }
-  await settled();
-  assert.equal(await current(), '#examples', 'Small trackpad deltas accumulate into one transition');
+  const top = await page.evaluate(() => scrollY);
+  await page.mouse.wheel(0, 120);
+  await page.waitForTimeout(200);
+  assert.ok(await page.evaluate(() => scrollY) - top > 60 && await page.evaluate(() => scrollY) - top < 400, 'The wheel scrolls natively instead of jumping a whole section');
+  await go('examples');
   await page.locator('#examples').focus();
   await page.keyboard.press('ArrowDown');
   await settled();

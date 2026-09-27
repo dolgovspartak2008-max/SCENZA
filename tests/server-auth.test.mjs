@@ -403,3 +403,35 @@ test('external email ownership verification preserves password login and uses th
   assert.equal((await restarted.call('/email/start', { mode: 'login', email: 'external@example.com', password })).status, 200);
   assert.equal((await f.call('/email/verify', { challengeId: start.body.challengeId, code: '12345678' })).status, 400);
 });
+
+test('referral link rewards both friends once, plan activation grants tokens and a share to the inviter', async t => {
+  const grants = [], referrals = [];
+  const tokenLedger = { grant: async (...args) => { if (!grants.some(item => item[3] === args[3])) grants.push(args); } };
+  const f = await fixture(t, { ownerTelegramIds: ['1'], botRegistrationEnabled: true, tokenLedger, onRegister: async value => referrals.push(value) });
+  const inviter = await f.auth.bots.registerTelegram({ id: 42, name: 'Inviter' }, consent, 'register:42');
+  const stored = await f.auth.bots.user(inviter.id);
+  assert.match(stored.referralCode, /^[a-f0-9]{10}$/);
+  const start = await f.call('/email/start', { mode: 'register', name: 'Friend', email: 'friend@example.com', password, ref: stored.referralCode, ...consent });
+  const friend = (await f.call('/email/verify', { challengeId: start.body.challengeId, code: f.mail.at(-1).code })).body.user;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(referrals, [{ userId: friend.id, inviterId: inviter.id, bonus: 20 }]);
+  assert.equal((await f.auth.bots.user(inviter.id)).referrals, 1);
+  await assert.rejects(f.auth.bots.activatePlan(2, friend.id, 'pro', 'plan:1'), /прав/);
+  await assert.rejects(f.auth.bots.activatePlan(1, friend.id, 'gold', 'plan:1'), /тариф/);
+  const activated = await f.auth.bots.activatePlan(1, friend.id, 'pro', 'plan:1');
+  await f.auth.bots.activatePlan(1, friend.id, 'pro', 'plan:1');
+  assert.equal(activated.accessActive, true);
+  assert.deepEqual(grants.map(([owner, tokens, reason]) => [owner, tokens, reason]), [[friend.id, 170, 'purchase'], [inviter.id, 17, 'referral']]);
+});
+
+test('signed-in users redeem access promo codes on the website', async t => {
+  const f = await fixture(t, { ownerTelegramIds: ['1'] });
+  assert.equal((await f.call('/promo', { code: 'WELCOME' })).status, 401);
+  const start = await f.call('/email/start', { mode: 'register', name: 'Promo', email: 'promo@example.com', password, ...consent });
+  const user = (await f.call('/email/verify', { challengeId: start.body.challengeId, code: f.mail.at(-1).code })).body.user;
+  await f.auth.bots.createPromo(1, 30, 5, 'promo:create', { code: 'WELCOME', expiresAt: '2027-12-31T23:59:59Z' });
+  assert.equal((await f.call('/promo', { code: 'WRONG1' })).status, 400);
+  const redeemed = await f.call('/promo', { code: 'welcome' });
+  assert.equal(redeemed.status, 200);
+  assert.ok(Date.parse(redeemed.body.user.accessUntil) > Date.parse(user.accessUntil));
+});

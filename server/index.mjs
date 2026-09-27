@@ -107,11 +107,20 @@ export async function downloadSource(value, file) {
   await saveStream(response, file, 20 * 1024 ** 3);
 }
 
+// The token ledger lives in the video store; auth reaches it lazily so accounts load without the video pipeline.
+const ledger = getVideoApi => ({ grant: async (...args) => (await getVideoApi()).tokens.grant(...args) });
+
 export async function createServer({ dataDir = process.env.SCENA_DATA_DIR || path.join(workspace, '.scena'), seed = true, authOptions = {}, allowLocalStudio = true, allowedOrigins = [], videoLibrary } = {}) {
   dataDir = path.resolve(dataDir);
   const mediaDir = path.join(dataDir, 'media');
   await fs.mkdir(mediaDir, { recursive: true });
-  const auth = authOptions === null ? null : await createAuth({ allowedOrigins: ['http://127.0.0.1:5173', 'http://localhost:5173'], telegramMembership: createTelegramMembership({ botToken: authOptions.telegramBotToken || process.env.SCENA_BOT_TOKEN }), ...authOptions, dataDir: path.join(dataDir, 'auth') });
+  const tokenLedger = ledger(() => getVideoApi());
+  const referralBonus = async ({ userId, inviterId, bonus }) => {
+    if (!inviterId) return;
+    await tokenLedger.grant(userId, bonus, 'referral', `referral-${userId}`, 'Бонус за регистрацию по приглашению');
+    await tokenLedger.grant(inviterId, bonus, 'referral', `referral-${userId}-inviter`, 'Бонус за приглашённого друга');
+  };
+  const auth = authOptions === null ? null : await createAuth({ allowedOrigins: ['http://127.0.0.1:5173', 'http://localhost:5173'], telegramMembership: createTelegramMembership({ botToken: authOptions.telegramBotToken || process.env.SCENA_BOT_TOKEN }), tokenLedger, onRegister: referralBonus, ...authOptions, dataDir: path.join(dataDir, 'auth') });
   const accountStudios = new Map();
   let videoApi;
   const getVideoApi = () => videoApi ||= import('./ai/api.mjs').then(({ createVideoApi }) => createVideoApi({ dataDir })).catch(error => { videoApi = null; throw error; });

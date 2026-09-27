@@ -7,6 +7,8 @@ import { createStore } from './store.mjs';
 import { createStorage } from './storage.mjs';
 import { fail, normalizeSettings, normalizeAd, timelineDuration } from './render.mjs';
 import { PRIMARY_VIDEO_MODEL, ANALYSIS_VERSION } from './openai.mjs';
+import { createTokens, LOCAL_OWNER } from './tokens.mjs';
+import { projectExports } from './project-export.mjs';
 
 const MAX_FILE = 20 * 1024 ** 3, CHUNK = 8 * 1024 ** 2;
 const projectView = ({analysis,analysisWindows,analysisResult,analysisCache,sourceFingerprint,editCache,adPreviewJobId,...project}) => project;
@@ -28,7 +30,7 @@ async function writeUpload(request, target, max, flags = 'w') {
 export async function createVideoApi({ dataDir, env = process.env }) {
   const root = path.join(dataDir, 'ai'); await fs.mkdir(path.join(root, 'uploads'), { recursive: true });
   const store = await createStore({ dataDir: root, env }), storage = createStorage({ dataDir: root, env });
-  const locks = new Set(), limits = new Map();
+  const locks = new Set(), limits = new Map(), tokens = createTokens(store);
   const send = (response, value, status = 200) => { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); response.end(JSON.stringify(value)); };
   const queue = async (ownerId, project, type, payload = {}) => {
     if (busyStates.includes(project.status)) throw fail('Дождитесь завершения текущей обработки.', 409);
@@ -57,6 +59,7 @@ export async function createVideoApi({ dataDir, env = process.env }) {
   }
   return {
     store,
+    tokens,
     close: () => store.close(),
     async listClips(ownerId) {
       const projects = await store.listProjects(ownerId);
@@ -89,7 +92,8 @@ export async function createVideoApi({ dataDir, env = process.env }) {
       limit.count++; limits.set(key,limit); if (limit.count > 600) throw fail('Слишком много запросов. Повторите через минуту.',429);
       if (route === '/api/video/usage' && method === 'GET') {
         const { month, sourceMinutes, sourceCount, editRequests } = await store.ownerMonthlyUsage(ownerId);
-        send(response, { month, sourceMinutes, sourceCount, editRequests }); return true;
+        const ledger = ownerId === LOCAL_OWNER ? null : await tokens.summary(ownerId);
+        send(response, { month, sourceMinutes, sourceCount, editRequests, ...(ledger ? { tokens: ledger.balance, tokenHistory: ledger.history } : {}) }); return true;
       }
       if (route === '/api/video/config' && method === 'GET') { send(response, { aiReady: !!env.OPENROUTER_API_KEY?.trim(), maxFileSize: MAX_FILE, chunkSize: CHUNK }); return true; }
       if (route === '/api/video/projects' && method === 'GET') { send(response, { projects: (await store.listProjects(ownerId)).map(projectView) }); return true; }
@@ -120,6 +124,13 @@ export async function createVideoApi({ dataDir, env = process.env }) {
       const [,id,action,fileId] = match, project = await store.getProject(ownerId,id);
       if (!project) throw fail('Проект не найден.',404);
       if (method === 'GET' && !action) { send(response,{project:projectView(project)}); return true; }
+      if (method === 'GET' && action === 'project-export') {
+        const format = projectExports[url.searchParams.get('format')], candidate = project.candidates.find(item => item.id === url.searchParams.get('candidate'));
+        const settings = candidate?.settings || project.settings || project.candidates.find(item => item.ready)?.settings;
+        if (!format || !settings) throw fail('Экспорт проекта станет доступен после подготовки роликов.', 409);
+        response.writeHead(200, { 'Content-Type': format.mime, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': `attachment; filename="scenza-${project.id.slice(0, 8)}.${format.extension}"` });
+        response.end(format.build(project, settings)); return true;
+      }
       if (['GET','HEAD'].includes(method) && action === 'files') {
         const entry = project.files[fileId]; if (!entry) throw fail('Файл не найден.',404);
         await serveFile(request,response,entry); return true;

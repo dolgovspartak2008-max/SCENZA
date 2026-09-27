@@ -1,4 +1,12 @@
-export type AuthInput = { email: string; password: string; name?: string };
+export type AuthInput = { email: string; password: string; name?: string; ref?: string };
+// An invitation link (?ref=CODE) is remembered until registration, even if the visitor browses first.
+const referralKey = 'scenza.ref';
+export function rememberReferral() {
+  try { const code = new URLSearchParams(location.search).get('ref'); if (code && /^[a-f0-9]{10}$/.test(code)) localStorage.setItem(referralKey, code); } catch { /* Storage is optional. */ }
+}
+export function savedReferral() {
+  try { return localStorage.getItem(referralKey) || undefined; } catch { return undefined; }
+}
 export type AuthFieldErrors = Partial<Record<'email' | 'password' | 'name', 'invalidEmail' | 'shortPassword' | 'invalidName'>>;
 export function validateAuth(input: AuthInput & { requireName?: boolean }): AuthFieldErrors {
   return {
@@ -8,7 +16,7 @@ export function validateAuth(input: AuthInput & { requireName?: boolean }): Auth
   };
 }
 export type AuthMode = 'login' | 'register' | 'reset';
-export type Account = { id: string; email?: string; telegramUserId?: string; name: string; provider: string; trialStartedAt: string | null; trialEndsAt: string | null; accessUntil?: string | null; accessSource?: string; accessActive: boolean; blocked?: boolean; blockReason?: string | null; createdAt?: string | null; lastActiveAt?: string | null; telegramUsername?: string | null; role?: 'user' | 'support' };
+export type Account = { id: string; email?: string; telegramUserId?: string; name: string; provider: string; trialStartedAt: string | null; trialEndsAt: string | null; accessUntil?: string | null; accessSource?: string; accessActive: boolean; blocked?: boolean; blockReason?: string | null; createdAt?: string | null; lastActiveAt?: string | null; telegramUsername?: string | null; role?: 'user' | 'support'; referralCode?: string; referrals?: number };
 export type AuthConfig = { emailEnabled: boolean; emailCodeLength?: 6 | 8; telegramEnabled: boolean; telegramClientId: string; telegramBotEnabled?: boolean; legalReady: boolean; botRegistrationEnabled?: boolean; requiredTelegramChannel?: string };
 export type AuthResult = { user?: Account; verificationRequired?: boolean; challengeId?: string; telegramRequired?: boolean; telegramVerified?: boolean; url?: string; expiresAt?: number };
 export type Consent = { termsAccepted: boolean; dataConsent: boolean; remember: boolean };

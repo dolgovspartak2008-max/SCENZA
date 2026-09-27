@@ -107,12 +107,12 @@
 .scenza-landing .scenza-price-card-selected { box-shadow: 0 9px 32px #13ad9510; border-color: #35b7a4; }
 .scenza-landing .scenza-plan-heading h3 { font-size: 1.18rem; }
 .scenza-landing .scenza-recommended-label { font-size: .69rem; }
-.scenza-landing .scenza-plan-description { font-size: .83rem; margin: 13px 0 20px; }
+.scenza-landing .scenza-plan-description { font-size: .88rem; margin: 13px 0 20px; }
 .scenza-landing .scenza-plan-price { font-size: 2.6rem; letter-spacing: -.03em; }
 .scenza-landing .scenza-price-period { font-size: .77rem; }
-.scenza-landing .scenza-annual-total { font-size: .74rem; min-height: 2em; margin-bottom: 17px; }
+.scenza-landing .scenza-annual-total { font-size: .86rem; min-height: 3.2em; margin-bottom: 17px; }
 .scenza-landing .scenza-plan-features { gap: 12px; padding-top: 19px; margin-bottom: 26px; }
-.scenza-landing .scenza-plan-features li { font-size: .79rem; }
+.scenza-landing .scenza-plan-features li { font-size: .86rem; }
 .scenza-landing .scenza-plan-cta { font-size: .8rem; }
 .scenza-faq { padding-block: 26px 55px; }
 .scenza-faq-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px 18px; align-items: start; }
@@ -330,4 +330,19 @@
   .scenza-workflow { padding-block: 42px 28px; }
   .scenza-workflow-steps li { gap: 14px; }
   .scenza-workflow-value { gap: 12px; }
+}
+.scenza-advantages { padding-block: 72px 24px; }
+.scenza-advantages-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin: 0; padding: 0; list-style: none; }
+.scenza-advantages-grid li { display: grid; align-content: start; gap: 12px; padding: 22px; border: 1px solid var(--line, #1c363e); border-radius: 13px; background: var(--panel, #0b191f); }
+.scenza-advantages-grid h3 { margin: 0; color: #edf7f5; font-size: 1rem; font-weight: 650; line-height: 1.35; }
+.scenza-advantages-grid p { margin: 0; font-size: .86rem; line-height: 1.6; }
+.scenza-referral { display: flex; align-items: center; gap: 18px; margin-top: 20px; padding: 22px 24px; border: 1px solid #2c6a5c; border-radius: 13px; background: linear-gradient(120deg, #0d2a24, var(--panel, #0b191f) 70%); }
+.scenza-referral > div { flex: 1; min-width: 0; }
+.scenza-referral h3 { margin: 0 0 4px; color: #edf7f5; font-size: 1.1rem; }
+.scenza-referral p { margin: 0; font-size: .9rem; line-height: 1.6; }
+.scenza-referral .scenza-button { flex-shrink: 0; }
+@media (max-width: 650px) {
+  .scenza-advantages { padding-block: 48px 12px; }
+  .scenza-referral { flex-direction: column; align-items: stretch; text-align: left; padding: 20px; }
+  .scenza-referral .scenza-button { width: 100%; }
 }
