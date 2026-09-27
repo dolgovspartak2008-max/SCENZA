@@ -6,6 +6,7 @@ import { Transform } from 'node:stream';
 import { createStore } from './store.mjs';
 import { createStorage } from './storage.mjs';
 import { fail, normalizeSettings, normalizeAd, timelineDuration } from './render.mjs';
+const AD_FIELDS = ['position','width','height','fill','fit','start','duration','opacity','offsetX','offsetY','fade','background','backgroundColor'];
 import { PRIMARY_VIDEO_MODEL, ANALYSIS_VERSION } from './openai.mjs';
 import { createTokens, LOCAL_OWNER } from './tokens.mjs';
 import { projectExports } from './project-export.mjs';
@@ -14,6 +15,17 @@ const MAX_FILE = 20 * 1024 ** 3, CHUNK = 8 * 1024 ** 2;
 const projectView = ({analysis,analysisWindows,analysisResult,analysisCache,sourceFingerprint,editCache,adPreviewJobId,...project}) => project;
 const readyClips = project => [...(project.exports ?? (project.finalFile ? [{ id: project.finalFile }] : [])), ...(project.candidates || []).filter(candidate => candidate.ready).map(candidate => ({...candidate,format:candidate.settings?.format||'9:16'}))];
 const busyStates = ['PREPROCESSING','TRANSCRIBING','ANALYZING','RENDERING','EXPORTING'];
+// Projects are shown as "Project 1, 2, 3…" instead of long file names. New projects store their number;
+// older ones are numbered by creation order on the fly.
+export function projectNumbers(projects) {
+  const numbers = new Map(); let last = 0;
+  for (const project of [...projects].sort((a, b) => (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0))) {
+    last = Number.isInteger(project.number) && project.number > 0 ? Math.max(last, project.number) : last + 1;
+    numbers.set(project.id, Number.isInteger(project.number) && project.number > 0 ? project.number : last);
+  }
+  return numbers;
+}
+export const projectTitle = number => `Project ${number}`;
 async function json(request) {
   let text = '';
   for await (const chunk of request) { text += chunk; if (Buffer.byteLength(text) > 128 * 1024) throw fail('Запрос слишком большой.', 413); }
@@ -30,7 +42,15 @@ async function writeUpload(request, target, max, flags = 'w') {
 export async function createVideoApi({ dataDir, env = process.env }) {
   const root = path.join(dataDir, 'ai'); await fs.mkdir(path.join(root, 'uploads'), { recursive: true });
   const store = await createStore({ dataDir: root, env }), storage = createStorage({ dataDir: root, env });
-  const locks = new Set(), limits = new Map(), tokens = createTokens(store);
+  const locks = new Set(), limits = new Map(), tokens = createTokens(store), numberCache = new Map();
+  const numbersFor = async ownerId => { const numbers = projectNumbers(await store.listProjects(ownerId)); if (numberCache.size > 5000) numberCache.clear(); numberCache.set(ownerId, numbers); return numbers; };
+  const numberOf = async (ownerId, project) => {
+    if (Number.isInteger(project.number) && project.number > 0) return project.number;
+    const cached = numberCache.get(ownerId);
+    return (cached?.has(project.id) ? cached : await numbersFor(ownerId)).get(project.id) || 1;
+  };
+  const view = async (ownerId, project) => ({ ...projectView(project), title: projectTitle(await numberOf(ownerId, project)) });
+  const nextNumber = async ownerId => Math.max(0, ...(await numbersFor(ownerId)).values()) + 1;
   const send = (response, value, status = 200) => { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); response.end(JSON.stringify(value)); };
   const queue = async (ownerId, project, type, payload = {}) => {
     if (busyStates.includes(project.status)) throw fail('Дождитесь завершения текущей обработки.', 409);
@@ -53,7 +73,7 @@ export async function createVideoApi({ dataDir, env = process.env }) {
       status = 206; headers['Content-Range'] = `bytes ${start}-${end}/${stat.size}`;
     }
     headers['Content-Length'] = end-start+1;
-    if (entry.download) headers['Content-Disposition'] = 'attachment; filename="scenza.mp4"';
+    if (entry.download) headers['Content-Disposition'] = `attachment; filename="${/^[\w.-]{1,80}$/.test(entry.filename || '') ? entry.filename : 'scenza.mp4'}"`;
     response.writeHead(status, headers);
     if (request.method === 'HEAD') response.end(); else await pipeline(createReadStream(file, { start, end }), response).catch(() => {});
   }
@@ -62,11 +82,11 @@ export async function createVideoApi({ dataDir, env = process.env }) {
     tokens,
     close: () => store.close(),
     async listClips(ownerId) {
-      const projects = await store.listProjects(ownerId);
+      const projects = await store.listProjects(ownerId), numbers = projectNumbers(projects);
       return projects.flatMap(project => readyClips(project)
         .filter(clip => project.files[clip.id]).map((clip, index) => ({
           id: `ai:${project.id}:${clip.id}`, projectId: project.id, projectUrl: `/ai/${project.id}`,
-          title: clip.title || `${project.title} · Клип ${index + 1}`, url: `/api/video/projects/${project.id}/files/${clip.id}`,
+          title: clip.title || `${projectTitle(numbers.get(project.id) || 1)} · Клип ${index + 1}`, url: `/api/video/projects/${project.id}/files/${clip.id}`,
           image: project.files.poster ? `/api/video/projects/${project.id}/files/poster` : '',
           duration: clip.duration ?? (project.settings ? timelineDuration(project.settings) : 0),
           format: clip.format ?? project.settings?.format ?? '9:16', createdAt: clip.createdAt ?? project.createdAt,
@@ -96,19 +116,19 @@ export async function createVideoApi({ dataDir, env = process.env }) {
         send(response, { month, sourceMinutes, sourceCount, editRequests, ...(ledger ? { tokens: ledger.balance, tokenHistory: ledger.history } : {}) }); return true;
       }
       if (route === '/api/video/config' && method === 'GET') { send(response, { aiReady: !!env.OPENROUTER_API_KEY?.trim(), maxFileSize: MAX_FILE, chunkSize: CHUNK }); return true; }
-      if (route === '/api/video/projects' && method === 'GET') { send(response, { projects: (await store.listProjects(ownerId)).map(projectView) }); return true; }
+      if (route === '/api/video/projects' && method === 'GET') { const projects = await store.listProjects(ownerId), numbers = projectNumbers(projects); send(response, { projects: projects.map(project => ({ ...projectView(project), title: projectTitle(numbers.get(project.id) || 1) })) }); return true; }
       if (route === '/api/video/import' && method === 'POST') {
         const body = await json(request);
         if (typeof body.url !== 'string' || body.url.length > 4000) throw fail('Введите прямую ссылку на видео.');
         const { publicUrl } = await import('../index.mjs'); await publicUrl(body.url);
-        const project = { id:randomUUID(), title:'Видео по ссылке', sourceUrl:body.url, createdAt:new Date().toISOString(), status:'UPLOADING', upload:{name:'Видео по ссылке',size:0,bytes:0},files:{},candidates:[],versions:[],music:[],retention:'keep-original' };
-        await store.saveProject(ownerId,project); const job = await queue(ownerId,project,'preprocess'); send(response,{project:projectView(project),job},202);return true;
+        const number = await nextNumber(ownerId), project = { id:randomUUID(), number, title:projectTitle(number), sourceUrl:body.url, createdAt:new Date().toISOString(), status:'UPLOADING', upload:{name:'Видео по ссылке',size:0,bytes:0},files:{},candidates:[],versions:[],music:[],retention:'keep-original' };
+        await store.saveProject(ownerId,project); const job = await queue(ownerId,project,'preprocess'); send(response,{project:await view(ownerId,project),job},202);return true;
       }
       if (route === '/api/video/projects' && method === 'POST') {
         const body = await json(request);
         if (typeof body.name !== 'string' || !/\.(mp4|mov|mkv|webm|m4v)$/i.test(body.name) || !Number.isSafeInteger(body.size) || body.size < 1 || body.size > MAX_FILE) throw fail('Выберите MP4, MOV, MKV или WebM до 20 ГБ.');
-        const project = { id: randomUUID(), title: path.basename(body.name).slice(0,120), createdAt: new Date().toISOString(), status: 'UPLOADING', upload: { name: path.basename(body.name), size: body.size, bytes: 0 }, files: {}, candidates: [], versions: [], music: [], retention: 'keep-original' };
-        await store.saveProject(ownerId, project); send(response, { project }, 201); return true;
+        const number = await nextNumber(ownerId), project = { id: randomUUID(), number, title: projectTitle(number), createdAt: new Date().toISOString(), status: 'UPLOADING', upload: { name: path.basename(body.name), size: body.size, bytes: 0 }, files: {}, candidates: [], versions: [], music: [], retention: 'keep-original' };
+        await store.saveProject(ownerId, project); numberCache.delete(ownerId); send(response, { project: await view(ownerId, project) }, 201); return true;
       }
       const jobMatch = /^\/api\/video\/jobs\/([\w-]+)(\/retry)?$/.exec(route);
       if (jobMatch) {
@@ -123,13 +143,13 @@ export async function createVideoApi({ dataDir, env = process.env }) {
       if (!match) throw fail('Неизвестный запрос.',404);
       const [,id,action,fileId] = match, project = await store.getProject(ownerId,id);
       if (!project) throw fail('Проект не найден.',404);
-      if (method === 'GET' && !action) { send(response,{project:projectView(project)}); return true; }
+      if (method === 'GET' && !action) { send(response,{project:await view(ownerId,project)}); return true; }
       if (method === 'GET' && action === 'project-export') {
         const format = projectExports[url.searchParams.get('format')], candidate = project.candidates.find(item => item.id === url.searchParams.get('candidate'));
         const settings = candidate?.settings || project.settings || project.candidates.find(item => item.ready)?.settings;
         if (!format || !settings) throw fail('Экспорт проекта станет доступен после подготовки роликов.', 409);
-        response.writeHead(200, { 'Content-Type': format.mime, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': `attachment; filename="scenza-${project.id.slice(0, 8)}.${format.extension}"` });
-        response.end(format.build(project, settings)); return true;
+        response.writeHead(200, { 'Content-Type': format.mime, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': `attachment; filename="project-${await numberOf(ownerId, project)}.${format.extension}"` });
+        response.end(format.build({ ...project, title: projectTitle(await numberOf(ownerId, project)) }, settings)); return true;
       }
       if (['GET','HEAD'].includes(method) && action === 'files') {
         const entry = project.files[fileId]; if (!entry) throw fail('Файл не найден.',404);
@@ -156,7 +176,7 @@ export async function createVideoApi({ dataDir, env = process.env }) {
       if (method === 'POST' && action === 'analyze') {
         const source=createHash('sha256').update(JSON.stringify([project.sourceFingerprint,project.files.original?.key,project.upload?.size,project.duration])).digest('hex');
         const currentCache=!project.analysisCache||(project.analysisCache.source===source&&project.analysisCache.version===ANALYSIS_VERSION&&project.analysisCache.model===(env.PRIMARY_VIDEO_MODEL||PRIMARY_VIDEO_MODEL));
-        if (currentCache && project.candidates.length && project.candidates.every(candidate=>candidate.ready&&project.files[candidate.id])) { send(response,{project:projectView(project),cached:true}); return true; }
+        if (currentCache && project.candidates.length && project.candidates.every(candidate=>candidate.ready&&project.files[candidate.id])) { send(response,{project:await view(ownerId,project),cached:true}); return true; }
         if (!project.candidates.length && !env.OPENROUTER_API_KEY?.trim()) throw fail('AI-анализ пока не подключён. Администратору нужно настроить ключ сервиса.',503);
         if (!project.files.original) throw fail('Сначала загрузите и подготовьте видео.',409);
         send(response,{job:await queue(ownerId,project,'analyze')},202); return true;
@@ -166,7 +186,6 @@ export async function createVideoApi({ dataDir, env = process.env }) {
         if (!project.candidates.length) throw fail('Сначала завершите анализ видео.',409);
         if (action === 'export' && !['APPROVED','ADDING_AD','COMPLETED'].includes(project.status)) throw fail('Сначала подтвердите ролик.',409);
         if (action === 'ad-preview' && (!project.ad || !['APPROVED','ADDING_AD','COMPLETED'].includes(project.status))) throw fail('Подтвердите ролик и загрузите рекламу.',409);
-        if (action === 'export' && project.ad && !project.adPreview) throw fail('Сначала посмотрите предпросмотр рекламы.',409);
         if (action === 'revise' && (typeof body.request !== 'string' || !body.request.trim() || body.request.length>2000)) throw fail('Опишите правку, до 2000 символов.');
         const candidate = project.candidates.find(item => item.id === body.sceneId);
         if (action === 'preview' && !candidate && !project.settings) throw fail('Выберите найденный момент.');
@@ -179,19 +198,19 @@ export async function createVideoApi({ dataDir, env = process.env }) {
       }
       if (method === 'POST' && action === 'approve') {
         if (project.status !== 'AWAITING_APPROVAL' || !project.versions.length) throw fail('Сначала дождитесь предпросмотра.',409);
-        project.status='APPROVED'; project.error=null; project.approvedVersion=project.currentVersion; project.adPreview=null; await store.saveProject(ownerId,project); send(response,{project:projectView(project)}); return true;
+        project.status='APPROVED'; project.error=null; project.approvedVersion=project.currentVersion; project.adPreview=null; await store.saveProject(ownerId,project); send(response,{project:await view(ownerId,project)}); return true;
       }
       if (method === 'POST' && action === 'restore') {
         if (busyStates.includes(project.status)) throw fail('Дождитесь завершения обработки.',409);
         const body=await json(request), version=project.versions.find(item=>item.id===body.versionId);
         if (!version) throw fail('Версия не найдена.',404);
         if (Object.hasOwn(version,'ad')) project.ad=version.ad;
-        project.settings=version.settings; project.currentVersion=version.id; project.adPreview=null; project.status='AWAITING_APPROVAL'; project.error=null; await store.saveProject(ownerId,project); send(response,{project:projectView(project)}); return true;
+        project.settings=version.settings; project.currentVersion=version.id; project.adPreview=null; project.status='AWAITING_APPROVAL'; project.error=null; await store.saveProject(ownerId,project); send(response,{project:await view(ownerId,project)}); return true;
       }
       if (method === 'POST' && ['advertisement','music'].includes(action)) {
         if (busyStates.includes(project.status)) throw fail('Дождитесь завершения обработки.',409);
         const name=url.searchParams.get('filename')||'', isAd=action==='advertisement';
-        if (isAd && !(project.status==='READY'&&project.candidates.some(candidate=>candidate.ready)) && (!project.settings || !['APPROVED','ADDING_AD','COMPLETED'].includes(project.status))) throw fail('Сначала подтвердите ролик.',409);
+        if (isAd && !(project.status==='READY'&&project.candidates.some(candidate=>candidate.ready)) && (!project.settings || !['AWAITING_APPROVAL','APPROVED','ADDING_AD','COMPLETED'].includes(project.status))) throw fail('Дождитесь готового ролика, затем добавьте баннер.',409);
         const videoAd=isAd&&/\.(mp4|mov|webm|m4v)$/i.test(name);
         if (!(isAd ? /\.(png|jpg|jpeg|webp|mp4|mov|webm|m4v)$/i : /\.(mp3|wav|m4a|ogg)$/i).test(name)) throw fail(isAd?'Загрузите PNG, JPG, WEBP или видео MP4, MOV, WebM до 30 секунд.':'Загрузите MP3, WAV, M4A или OGG.');
         const assetId=randomUUID(), local=path.join(root,'uploads',`${assetId}${path.extname(name).toLowerCase()}`);
@@ -200,10 +219,24 @@ export async function createVideoApi({ dataDir, env = process.env }) {
         send(response,{job:await queue(ownerId,project,'asset',{assetId,localName:path.basename(local),name:path.basename(name).slice(0,120),kind:isAd?'ad':'music',...(isAd?{adKind:videoAd?'video':'image'}:{}),previousStatus:project.status})},202); return true;
       }
       if (method === 'PUT' && action === 'advertisement') {
-        if (!project.ad || !['APPROVED','ADDING_AD','COMPLETED'].includes(project.status)) throw fail('Подтвердите ролик и загрузите рекламу.',409);
+        if (!project.ad || !project.settings || !['AWAITING_APPROVAL','APPROVED','ADDING_AD','COMPLETED'].includes(project.status)) throw fail('Сначала загрузите баннер для готового ролика.',409);
         const body=await json(request), duration=timelineDuration(project.settings);
-        const options=normalizeAd(Object.fromEntries(['position','width','height','fill','start','duration','opacity'].map(key=>[key,body[key]]).filter(([,value])=>value!==undefined)),duration);
-        project.ad={...project.ad,...options}; project.adPreview=null; project.status='ADDING_AD'; await store.saveProject(ownerId,project); send(response,{project:projectView(project)}); return true;
+        if (typeof body.fit === 'string' && body.fill !== undefined) delete body.fill;
+        const options=normalizeAd(Object.fromEntries(AD_FIELDS.map(key=>[key,body[key]]).filter(([,value])=>value!==undefined)),duration);
+        project.ad={...project.ad,...options}; project.adPreview=null; if (project.status!=='AWAITING_APPROVAL') project.status='ADDING_AD'; await store.saveProject(ownerId,project); send(response,{project:await view(ownerId,project)}); return true;
+      }
+      if (method === 'DELETE' && action === 'advertisement') {
+        if (busyStates.includes(project.status)) throw fail('Дождитесь завершения обработки.',409);
+        project.ad=null; project.adPreview=null; await store.saveProject(ownerId,project); send(response,{project:await view(ownerId,project)}); return true;
+      }
+      if (method === 'POST' && action === 'capcut') {
+        const body = await json(request), candidate = typeof body.candidate === 'string' ? project.candidates.find(item => item.id === body.candidate && item.ready) : null;
+        if (body.candidate !== undefined && !candidate) throw fail('Ролик не найден.',404);
+        const version = project.versions.find(item => item.id === project.currentVersion);
+        const source = candidate?.settings || version?.settings || project.settings;
+        if (!source) throw fail('Пакет для CapCut станет доступен после подготовки роликов.',409);
+        const settings = normalizeSettings(source, project.duration), key = candidate ? candidate.id : 'current', previousStatus = project.status;
+        send(response,{job:await queue(ownerId,project,'export',{settings,capcut:true,key,previousStatus,number:await numberOf(ownerId,project)})},202); return true;
       }
       throw fail('Неизвестный запрос.',404);
     },

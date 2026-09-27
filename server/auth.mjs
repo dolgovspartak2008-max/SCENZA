@@ -124,9 +124,9 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
   }
   function publicUser(user) {
     const extended = Date.parse(user.accessUntil) || 0;
-    const trial = Date.parse(user.trialEndsAt) || 0;
-    const until = Math.max(extended, trial);
-    return { id: user.id, ...(user.email ? { email: user.email } : {}), ...(user.telegramUserId ? { telegramUserId: user.telegramUserId } : {}), name: user.name, provider: user.provider, createdAt: user.createdAt || null, lastActiveAt: user.lastActiveAt || null, telegramUsername: user.telegramUsername || null, blockReason: user.blockReason || null, role: user.role === 'support' ? 'support' : 'user', blocked: user.blocked === true, trialStartedAt: user.trialStartedAt, trialEndsAt: user.trialEndsAt, accessUntil: until ? new Date(until).toISOString() : null, accessSource: extended >= trial && extended ? user.accessSource || 'grant' : trial ? 'trial' : 'none', accessActive: now() < until, referralCode: referralCode(user.id), referrals: accounts.filter(item => item.referredBy === user.id).length };
+    // The free start is a token grant (see ai/tokens.mjs), not a time limit: once started, access never expires by date.
+    const started = !!user.trialStartedAt;
+    return { id: user.id, ...(user.email ? { email: user.email } : {}), ...(user.telegramUserId ? { telegramUserId: user.telegramUserId } : {}), name: user.name, provider: user.provider, createdAt: user.createdAt || null, lastActiveAt: user.lastActiveAt || null, telegramUsername: user.telegramUsername || null, blockReason: user.blockReason || null, role: user.role === 'support' ? 'support' : 'user', blocked: user.blocked === true, trialStartedAt: user.trialStartedAt, trialEndsAt: user.trialEndsAt, accessUntil: extended ? new Date(extended).toISOString() : null, accessSource: extended > now() ? user.accessSource || 'grant' : started ? 'trial' : 'none', accessActive: started || now() < extended, referralCode: referralCode(user.id), referrals: accounts.filter(item => item.referredBy === user.id).length };
   }
 
   function session(request) {

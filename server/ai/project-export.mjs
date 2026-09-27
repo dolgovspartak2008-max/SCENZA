@@ -58,7 +58,7 @@ export function exportSrt(project, settings) {
   for (const part of timeline(settings)) {
     for (const segment of project.analysis?.segments || []) {
       const start = Math.max(segment.start, part.start), end = Math.min(segment.end, part.end);
-      const text = String(segment.text || '').trim();
+      const text = (settings.subtitleReplacements || []).reduce((value, { from, to }) => value.replaceAll(from, () => to), String(segment.text || '')).trim();
       if (end - start > .05 && text) cues.push({ start: offset + start - part.start, end: offset + end - part.start, text });
     }
     offset += part.end - part.start;

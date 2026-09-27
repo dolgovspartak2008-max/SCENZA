@@ -56,6 +56,8 @@ test('uploaded video ad survives decoding, AI edits, approval, preview and expor
   assert.equal((await request(`${route}/restore`,'POST',{versionId:editedVersion})).project.ad.position,'bottom-right');
   project=await api.store.getProject('ad-test',id);
   project.status='READY';
+  // Banners added during review are previewed live, so found moments are not re-rendered; give the candidate its file.
+  project.files[project.candidates[0].id]=project.files.original;
   project.analysisCache={version:ANALYSIS_VERSION,model:PRIMARY_VIDEO_MODEL,source:createHash('sha256').update(JSON.stringify([project.sourceFingerprint,project.files.original?.key,project.upload?.size,project.duration])).digest('hex')};
   await api.store.saveProject('ad-test',project);
   assert.equal((await request(`${route}/analyze`,'POST')).cached,true);

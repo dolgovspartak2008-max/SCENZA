@@ -434,7 +434,7 @@ export async function createServer({ dataDir = process.env.SCENA_DATA_DIR || pat
             if (account.blocked) throw fail(`Создание роликов заблокировано. Причина: ${account.blockReason || 'обратитесь в поддержку'}. Вход и ваши данные доступны.`, 403);
             await admin.assertGenerationAllowed();
           }
-          if (!account.accessActive && !['GET', 'HEAD'].includes(method)) throw fail('Пробные 7 дней завершены. Обработка станет доступна после продления доступа. Приём оплаты пока не открыт.', 402);
+          if (!account.accessActive && !['GET', 'HEAD'].includes(method)) throw fail('Доступ к обработке не активен. Войдите на сайт, чтобы получить стартовые токены, или обратитесь в поддержку.', 402);
           if (await handleVideo(request, response, account.id)) return;
           if (!accountStudios.has(account.id)) {
             const studio = createServer({ dataDir: path.join(dataDir, 'accounts', account.id), seed: false, authOptions: null, allowedOrigins: [...allowedOrigins, ...(authOptions?.allowedOrigins || [])], videoLibrary: { list: async () => (await getVideoApi()).listClips(account.id), file: async id => (await getVideoApi()).localClipFile(account.id, id) } });

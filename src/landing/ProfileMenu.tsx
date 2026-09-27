@@ -45,7 +45,7 @@ export function ProfileMenu({ account, language, onLanguageChange, onAccountChan
   const en = language === 'en';
   const t = (ru: string, english: string) => en ? english : ru;
   const label = account.name || account.email || t('Профиль', 'Profile');
-  const end = account.accessUntil || account.trialEndsAt;
+  const end = account.accessUntil;
   const left = account.accessActive ? remaining(end, en) : null;
   const trial = !account.accessSource || account.accessSource === 'trial';
   const inviteLink = account.referralCode ? `${location.origin}/?ref=${account.referralCode}` : '';
@@ -91,9 +91,9 @@ export function ProfileMenu({ account, language, onLanguageChange, onAccountChan
     {open && <div id={panelId} className="scenza-profile-panel" role="region" aria-label={t('Профиль', 'Profile')}>
       <div className="scenza-profile-head"><span className="scenza-profile-avatar" aria-hidden="true">{label.slice(0, 1).toUpperCase()}</span><div><strong>{label}</strong>{account.email && <small>{account.email}</small>}</div></div>
       <div className="scenza-profile-access" data-active={account.accessActive}>
-        <span>{account.accessActive ? trial ? t('Пробный доступ', 'Trial access') : t('Подписка активна', 'Subscription active') : t('Доступ не активен', 'No active access')}</span>
-        {left ? <strong>{t('Осталось: ', 'Time left: ')}{left}</strong> : <strong>{t('Срок истёк', 'Expired')}</strong>}
-        {end && <small>{t('до ', 'until ')}{new Date(end).toLocaleString(locale, { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</small>}
+        <span>{account.accessActive ? trial ? t('Бесплатный старт', 'Free start') : t('Подписка активна', 'Subscription active') : t('Доступ не активен', 'No active access')}</span>
+        {account.accessActive && trial ? <strong><Gift size={14} aria-hidden="true" /> {t('10 токенов в подарок', '10 tokens on us')}</strong> : left ? <strong>{t('Осталось: ', 'Time left: ')}{left}</strong> : <strong>{account.accessActive ? t('Без срока', 'No deadline') : t('Срок истёк', 'Expired')}</strong>}
+        {!trial && end && <small>{t('до ', 'until ')}{new Date(end).toLocaleString(locale, { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}</small>}
       </div>
       <div className="scenza-profile-stats">
         <div><Coins size={16} aria-hidden="true" /><span>{t('Токены', 'Tokens')}</span><strong>{usage?.tokens ?? '—'}</strong></div>

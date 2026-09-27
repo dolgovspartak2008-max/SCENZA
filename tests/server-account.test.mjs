@@ -4,7 +4,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { createServer } from '../server/index.mjs';
 
-test('accounts isolate libraries and media, expired trials cannot process or modify data', async t => {
+test('accounts isolate libraries and media; the free start does not expire by date', async t => {
   const testRoot = path.resolve('tmp');
   await fs.mkdir(testRoot, { recursive: true });
   const dataDir = await fs.mkdtemp(path.join(testRoot, 'account-test-'));
@@ -51,9 +51,8 @@ test('accounts isolate libraries and media, expired trials cannot process or mod
   assert.notEqual((await request('/media/private-project.jpg')).status, 200);
   assert.equal((await request('/api/projects', 'scena_session=invalid')).status, 401);
   time += 8 * 86400000;
-  assert.equal((await (await request('/api/auth/session', first.cookie)).json()).user.accessActive, false);
-  assert.equal((await request('/api/upload', first.cookie, {})).status, 402);
-  assert.equal((await request('/api/telegram/send', first.cookie, { clipId: 'private-project' })).status, 402);
+  // The free start is 10 tokens without a deadline: access stays active, the token balance is the limit.
+  assert.equal((await (await request('/api/auth/session', first.cookie)).json()).user.accessActive, true);
   assert.equal((await request('/api/projects', first.cookie)).status, 200);
   assert.equal((await request('/api/auth/logout', first.cookie, {})).status, 200);
   assert.equal((await request('/api/projects', first.cookie)).status, 401);

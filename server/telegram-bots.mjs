@@ -5,12 +5,13 @@ import path from 'node:path';
 import timers from 'node:timers/promises';
 import { createTelegramAdmin } from './telegram-admin.mjs';
 import { createPhotoSender } from './telegram-photo.mjs';
+import { TRIAL_TOKENS } from './ai/tokens.mjs';
 
 const button = (text, callback_data) => ({ text, callback_data });
 const clean = value => String(value ?? '').replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 250);
 const date = value => value && Number.isFinite(new Date(value).getTime()) ? new Date(value).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) + ' МСК' : '—';
 const ownerNotice = 'Самозанятый Долгов Спартак Сергеевич, ИНН 026617773364. Контакт: dolgovspartak2008@gmail.com.';
-const termsNotice = `${ownerNotice}\nБот SCENZA создаёт аккаунт, показывает доступ и принимает промокоды. Основная работа с проектами происходит на сайте. Сайт готовится к запуску. Бесплатный пробный доступ на 7 дней начнётся при первом входе на сайт. Карта не требуется; оплата и автоматические списания не подключены. Промокод предоставляет доступ на указанное число дней: срок начинается при его активации. Не передавайте доступ другим лицам и не используйте сервис для незаконных действий. По вопросам доступа и удаления аккаунта обращайтесь по указанной почте. Полные документы сайта пока являются проектами.`;
+const termsNotice = `${ownerNotice}\nБот SCENZA создаёт аккаунт, показывает доступ и принимает промокоды. Основная работа с проектами происходит на сайте. Сайт готовится к запуску. При первом входе на сайт мы дарим 10 токенов (10 минут видео) — без срока действия. Карта не требуется; оплата и автоматические списания не подключены. Промокод предоставляет доступ на указанное число дней: срок начинается при его активации. Не передавайте доступ другим лицам и не используйте сервис для незаконных действий. По вопросам доступа и удаления аккаунта обращайтесь по указанной почте. Полные документы сайта пока являются проектами.`;
 const privacyNotice = `${ownerNotice}\nЦель обработки — создание аккаунта SCENZA и учёт доступа, входов и промокодов. Данные: Telegram ID, имя, username (если задан), сведения о доступе и технических действиях аккаунта. Действия: получение, запись, хранение, использование, изменение и удаление. Аккаунты хранятся локально на компьютере владельца; сервер ещё не выбран. Telegram также обрабатывает сообщения по своим условиям. Рекламные рассылки и платежи не подключены. Данные аккаунта хранятся до его удаления; сроки хранения технических журналов ещё уточняются. Для отзыва согласия или запроса удаления: dolgovspartak2008@gmail.com. После отзыва регистрация и обслуживание аккаунта могут стать невозможны. Полные документы сайта пока являются проектами.`;
 function logDetail(value) {
   if (!value || typeof value !== 'object') return '';
@@ -130,7 +131,7 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
     if (!user) return 'Аккаунт ещё не зарегистрирован.';
     const active = user.accessActive;
     return [`Аккаунт: ${clean(user.name)}`, `Доступ: ${active ? 'активен' : 'неактивен'}`, ...(user.blocked ? [`Создание роликов заблокировано. Причина: ${clean(user.blockReason) || 'обратитесь в поддержку'}. Вход в аккаунт доступен.`] : []),
-      user.trialEndsAt ? `Пробный период до: ${date(user.trialEndsAt)}` : 'Пробные 7 дней начнутся при первом входе на сайт.', `Предоставленный доступ до: ${date(user.accessUntil)}`,
+      user.trialStartedAt ? `Подарочные ${TRIAL_TOKENS} токенов начислены — баланс виден в профиле на сайте. Токены не сгорают.` : `${TRIAL_TOKENS} бесплатных токенов начислятся при первом входе на сайт.`, ...(user.accessUntil ? [`Предоставленный доступ до: ${date(user.accessUntil)}`] : []),
       'Автоматических списаний нет. Оплата пока не подключена.'].join('\n');
   }
   async function client(update, person, text, data) {
@@ -167,7 +168,7 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
     if (command === '/privacy' || data === 'privacy') return send('client', id, privacyNotice, clientRows());
     if (command === '/terms' || data === 'terms') return send('client', id, termsNotice, clientRows());
     if (command === '/site' || data === 'site') return send('client', id, site ? 'Откройте SCENZA и выберите вход через Telegram.' : 'Адрес сайта ещё настраивается. Ссылка появится после подключения домена.', clientRows());
-    if (command === '/help' || data === 'help') return send('client', id, 'SCENZA: регистрация, статус доступа и промокоды. Работа с проектами — на сайте. Пробные 7 дней начнутся при первом входе на сайт. Оплата и автосписания не подключены.\nПоддержка: dolgovspartak2008@gmail.com\n/id — ваш Telegram ID\n/terms — условия\n/privacy — обработка данных.', clientRows());
+    if (command === '/help' || data === 'help') return send('client', id, 'SCENZA: регистрация, статус доступа и промокоды. Работа с проектами — на сайте. При первом входе на сайт — 10 токенов в подарок. Оплата и автосписания не подключены.\nПоддержка: dolgovspartak2008@gmail.com\n/id — ваш Telegram ID\n/terms — условия\n/privacy — обработка данных.', clientRows());
     if (data === 'register' || data?.startsWith('webregister:') || data?.startsWith('terms:') || data?.startsWith('consent:')) {
       if (!registrationEnabled) return send('client', id, 'Регистрация пока не включена: ожидаем настройки сайта и юридических документов.');
       if (data === 'register' || data.startsWith('webregister:')) {
@@ -359,7 +360,7 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
     if (singleBot) commands.client.push(['admin', 'Панель администратора']);
     for (const type of botTypes) if (tokens[type]) {
       await api(type, 'setMyCommands', { commands: commands[type].map(([command, description]) => ({ command, description })) });
-      await api(type, 'setMyDescription', { description: type === 'client' ? 'SCENZA: регистрация, статус доступа и активация промокодов. Работа с проектами — на сайте. Пробный доступ 7 дней, без автосписаний.' : 'Закрытая панель SCENZA: пользователи, расходы AI, ошибки, доступ, промокоды и обращения. Доступ только для владельца.' });
+      await api(type, 'setMyDescription', { description: type === 'client' ? 'SCENZA: регистрация, статус доступа и активация промокодов. Работа с проектами — на сайте. 10 токенов в подарок, без автосписаний.' : 'Закрытая панель SCENZA: пользователи, расходы AI, ошибки, доступ, промокоды и обращения. Доступ только для владельца.' });
     }
   }
   async function poll(type, signal) {

@@ -47,8 +47,8 @@ export const content: Record<Language, LandingCopy> = {
       note: 'Онлайн-оплата пока не подключена: тариф подключает администратор. Автоматических списаний нет.',
     },
     pricingTitle: 'Подберите свой ритм', pricingDescription: '1 токен = 1 минута исходного видео. Токены не сгорают: остаток переносится на следующий месяц. Чем больше пакет, тем дешевле минута.',
-    pricing: { demo: 'Онлайн-оплата пока не подключена · тариф подключает администратор', discount: '−{discount}%', recommended: 'Рекомендуем', perMonth: '/ месяц', tokens: '{tokens} токенов · {price} за минуту', saving: 'Экономия {amount}', free: 'на 7 дней', choose: 'Выбрать', featuresLabel: 'Что входит в тариф', plans: {
-      trial: { name: 'Пробный', description: '7 дней знакомства со студией без карты', features: ['Полный доступ к студии на 7 дней', 'Выбор сцен и форматов', 'Автосубтитры', 'Без привязки карты'], cta: 'Попробовать SCENZA' },
+    pricing: { demo: 'Онлайн-оплата пока не подключена · тариф подключает администратор', discount: '−{discount}%', recommended: 'Рекомендуем', perMonth: '/ месяц', tokens: '{tokens} токенов · {price} за минуту', saving: 'Экономия {amount}', free: 'в подарок', gift: '10 токенов = 10 минут видео — бесплатно', choose: 'Выбрать', featuresLabel: 'Что входит в тариф', plans: {
+      trial: { name: 'Подарок', description: 'Дарим 10 токенов сразу после регистрации — без карты и без срока', features: ['10 бесплатных токенов = 10 минут видео', 'Хватит на несколько готовых роликов', 'Субтитры, баннер и экспорт в CapCut', 'Токены не сгорают, карта не нужна'], cta: 'Забрать 10 токенов' },
       start: { name: 'Старт', description: 'Для регулярных коротких роликов', features: ['75 минут исходного видео', '≈65–70 готовых Shorts / TikTok', 'Субтитры и собственные баннеры', 'Экспорт готового MP4'], cta: 'Выбрать Старт' },
       pro: { name: 'Про', description: 'Для блогеров, которые выпускают ролики каждый день', features: ['170 минут исходного видео', 'Минута дешевле на 12%', 'Видеобаннеры с паузой ролика', 'Кадрирование под каждую площадку'], cta: 'Выбрать Про' },
       business: { name: 'Бизнес', description: 'Для студий, агентств и команд', features: ['500 минут исходного видео', '≈470 готовых роликов', 'Самая низкая цена минуты', 'Баннеры клиентов в безопасной зоне'], cta: 'Выбрать Бизнес' },
@@ -56,11 +56,11 @@ export const content: Record<Language, LandingCopy> = {
     faqTitle: 'Остались вопросы?', faqDescription: 'Самое важное о работе со SCENZA.',
     faq: [
       { question: 'Что делает SCENZA?', answer: 'SCENZA помогает создавать короткие ролики из длинных записей: находить смены сцен, выбирать фрагменты, менять формат кадра, добавлять текст и баннеры, а затем сохранять MP4.' },
-      { question: 'Какие исходники поддерживаются?', answer: 'В локальной студии можно загрузить MP4, MOV, WebM, MKV и AVI объёмом до 2 ГБ. Импорт по ссылке доступен для общедоступных видео и зависит от ограничений источника. Закрытые записи и защищённые плееры не поддерживаются.' },
+      { question: 'Какие исходники поддерживаются?', answer: 'Лучше всего SCENZA работает с видео до 30 минут: анализ проходит быстрее, а ролики получаются точнее. В локальной студии можно загрузить MP4, MOV, WebM, MKV и AVI объёмом до 2 ГБ. Импорт по ссылке доступен для общедоступных видео и зависит от ограничений источника. Закрытые записи и защищённые плееры не поддерживаются.' },
       { question: 'Нужен ли опыт монтажа?', answer: 'Начать можно с выбора готовой сцены. Затем достаточно проверить начало и конец фрагмента, кадрирование и звук. В публичной демонстрации можно попробовать основные настройки без регистрации.' },
       { question: 'Можно ли править субтитры?', answer: 'Да. В рабочей студии вы вводите и редактируете текст вручную, выбираете стиль и встраиваете его в ролик. Автоматическое распознавание речи пока не подключено.' },
       { question: 'Как получить готовое видео?', answer: 'В рабочей студии нажмите «Экспортировать», дождитесь завершения обработки и скачайте MP4. Видео можно загрузить на нужную площадку самостоятельно. В сокращённой демоверсии можно скачать только PNG-кадр; экспорт MP4 недоступен.' },
-      { question: 'Как устроен доступ по тарифам?', answer: 'После подтверждённой регистрации — 7 бесплатных дней без привязки карты. Платные тарифы считаются в токенах: 1 токен = 1 минута загруженного исходного видео. Онлайн-оплата пока не подключена: тариф подключает администратор через Telegram-бота, автоматических списаний нет.' },
+      { question: 'Как устроен доступ по тарифам?', answer: 'Сразу после регистрации мы дарим 10 токенов — это 10 минут исходного видео, хватит на несколько готовых роликов. Карта не нужна, срок не ограничен. Платные тарифы считаются в токенах: 1 токен = 1 минута загруженного исходного видео. Онлайн-оплата пока не подключена: тариф подключает администратор через Telegram-бота, автоматических списаний нет.' },
       { question: 'Сгорают ли токены?', answer: 'Нет. Токены остаются на балансе, пока вы их не используете, и переносятся на следующий месяц при продлении. Повторный анализ того же видео токены не списывает.' },
       { question: 'Как работает «Приведи друга»?', answer: 'В профиле есть ваша ссылка. Когда друг регистрируется по ней, вы оба получаете по 20 токенов, а после каждой его покупки вы получаете ещё 10% токенов от тарифа.' },
     ],
@@ -69,7 +69,7 @@ export const content: Record<Language, LandingCopy> = {
     advantages: { label: 'Преимущества', title: 'Почему переходят в SCENZA', description: 'То, чего не хватает в привычных сервисах для нарезки роликов.', items: [
       { title: 'Токены не сгорают', text: 'Неиспользованные минуты остаются на балансе и переносятся на следующий месяц. Вы платите только за загруженное видео.' },
       { title: 'Реклама, которая не портит ролик', text: 'Баннер в свободной зоне кадра или вставка с паузой: ролик останавливается, показывает рекламу и продолжается с того же места.' },
-      { title: 'Экспорт в Premiere Pro, DaVinci и CapCut', text: 'Кроме готового MP4 — проект XML и EDL с монтажными точками и субтитры SRT, чтобы докрутить монтаж вручную.' },
+      { title: 'Экспорт в CapCut, Premiere Pro и DaVinci', text: 'Пакет для CapCut в один клик: чистое видео без вшитых субтитров, редактируемые субтитры SRT и ваш баннер. Для Premiere и DaVinci — проект XML и EDL.' },
       { title: 'Текст поста и хэштеги', text: 'К каждому ролику — заголовок, хук, описание и 5–7 хэштегов для TikTok, Reels и Shorts. Скопируйте в один клик.' },
       { title: 'Честная цена за минуту', text: '1 токен = 1 минута исходного видео. Чем больше пакет, тем дешевле минута — до −24% на тарифе «Бизнес».' },
     ] },
@@ -100,8 +100,8 @@ export const content: Record<Language, LandingCopy> = {
       note: 'Online payment is not connected yet: the administrator activates plans. There are no automatic charges.',
     },
     pricingTitle: 'Find your rhythm', pricingDescription: '1 token = 1 minute of source video. Tokens never expire: unused ones roll over to the next month. Bigger packs make every minute cheaper.',
-    pricing: { demo: 'Online payment is not connected yet · plans are activated by the administrator', discount: '−{discount}%', recommended: 'Recommended', perMonth: '/ month', tokens: '{tokens} tokens · {price} per minute', saving: 'You save {amount}', free: 'for 7 days', choose: 'Choose', featuresLabel: 'What the plan includes', plans: {
-      trial: { name: 'Trial', description: '7 days in the studio, no card required', features: ['Full studio access for 7 days', 'Scene and format selection', 'Automatic subtitles', 'No card required'], cta: 'Try SCENZA' },
+    pricing: { demo: 'Online payment is not connected yet · plans are activated by the administrator', discount: '−{discount}%', recommended: 'Recommended', perMonth: '/ month', tokens: '{tokens} tokens · {price} per minute', saving: 'You save {amount}', free: 'as a gift', gift: '10 tokens = 10 minutes of video, free', choose: 'Choose', featuresLabel: 'What the plan includes', plans: {
+      trial: { name: 'Gift', description: '10 tokens on us right after sign-up — no card, no deadline', features: ['10 free tokens = 10 minutes of video', 'Enough for several finished clips', 'Subtitles, banner and CapCut export', 'Tokens never expire, no card required'], cta: 'Claim 10 tokens' },
       start: { name: 'Start', description: 'For regular short videos', features: ['75 minutes of source video', '≈65–70 finished Shorts / TikToks', 'Subtitles and your own banners', 'Export a finished MP4'], cta: 'Choose Start' },
       pro: { name: 'Pro', description: 'For creators who publish every day', features: ['170 minutes of source video', 'Each minute 12% cheaper', 'Video banners that pause the clip', 'Framing for every platform'], cta: 'Choose Pro' },
       business: { name: 'Business', description: 'For studios, agencies and teams', features: ['500 minutes of source video', '≈470 finished clips', 'The lowest price per minute', 'Client banners inside the safe zone'], cta: 'Choose Business' },
@@ -109,11 +109,11 @@ export const content: Record<Language, LandingCopy> = {
     faqTitle: 'A few things to know', faqDescription: 'The essentials of working with SCENZA.',
     faq: [
       { question: 'What does SCENZA do?', answer: 'SCENZA helps you create short videos from long recordings: detect scene changes, choose clips, adjust framing, add text and banners, then export an MP4.' },
-      { question: 'Which source files are supported?', answer: 'The local studio accepts MP4, MOV, WebM, MKV and AVI files up to 2 GB. Link imports work with publicly accessible videos and depend on the source’s restrictions. Private recordings and protected players are not supported.' },
+      { question: 'Which source files are supported?', answer: 'SCENZA works best with videos up to 30 minutes: analysis is faster and the clips are more precise. The local studio accepts MP4, MOV, WebM, MKV and AVI files up to 2 GB. Link imports work with publicly accessible videos and depend on the source’s restrictions. Private recordings and protected players are not supported.' },
       { question: 'Do I need editing experience?', answer: 'Start by choosing a detected scene, then check its start and end, framing and audio. You can try the main controls in the public demonstration without creating an account.' },
       { question: 'Can I edit subtitles?', answer: 'Yes. In the working studio, you can enter and edit text manually, choose its style and burn it into your video. Automatic speech recognition is not connected yet.' },
       { question: 'How do I get my finished video?', answer: 'In the working studio, select Export, wait for processing to finish and download the MP4. You can upload it to your chosen platform yourself. The limited demo can download PNG frames; MP4 export is unavailable.' },
-      { question: 'How do the plans work?', answer: 'Verified registration includes a 7-day trial without a card. Paid plans are counted in tokens: 1 token = 1 minute of uploaded source video. Online payment is not connected yet: the administrator activates plans through the Telegram bot and there are no automatic charges.' },
+      { question: 'How do the plans work?', answer: 'Right after sign-up we give you 10 tokens — 10 minutes of source video, enough for several finished clips. No card and no deadline. Paid plans are counted in tokens: 1 token = 1 minute of uploaded source video. Online payment is not connected yet: the administrator activates plans through the Telegram bot and there are no automatic charges.' },
       { question: 'Do tokens expire?', answer: 'No. Tokens stay on your balance until you use them and roll over to the next month when you renew. Re-analysing the same video does not use tokens again.' },
       { question: 'How does Invite a friend work?', answer: 'Your link is in your profile. When a friend signs up with it, you both get 20 tokens, and after each of their purchases you get another 10% of the plan tokens.' },
     ],
@@ -122,7 +122,7 @@ export const content: Record<Language, LandingCopy> = {
     advantages: { label: 'Advantages', title: 'Why creators switch to SCENZA', description: 'What the usual clipping services are missing.', items: [
       { title: 'Tokens never expire', text: 'Unused minutes stay on your balance and roll over to the next month. You only pay for the video you upload.' },
       { title: 'Ads that do not spoil the clip', text: 'A banner in a free area of the frame or an inserted break: the clip pauses, shows the ad and resumes from the same moment.' },
-      { title: 'Export to Premiere Pro, DaVinci and CapCut', text: 'Besides the finished MP4: an XML and EDL project with the edit points and SRT subtitles for fine-tuning by hand.' },
+      { title: 'Export to CapCut, Premiere Pro and DaVinci', text: 'A one-click CapCut pack: a clean video without burned-in captions, editable SRT subtitles and your banner. XML and EDL projects for Premiere and DaVinci.' },
       { title: 'Post text and hashtags', text: 'Every clip comes with a title, hook, description and 5–7 hashtags for TikTok, Reels and Shorts. Copy them in one click.' },
       { title: 'A fair price per minute', text: '1 token = 1 minute of source video. Bigger packs make each minute cheaper, up to −24% on Business.' },
     ] },

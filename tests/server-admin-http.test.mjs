@@ -81,9 +81,8 @@ test('HTTP block, maintenance and expired access preserve account, settings and 
   await panel.setMaintenance(owner, false);
 
   now += 8 * 86400000;
-  assert.equal((await call('/api/auth/session', first.cookie)).body.user.accessActive, false);
-  assert.equal((await call('/api/upload', first.cookie, {})).status, 402);
-  assert.equal((await call('/api/settings', first.cookie, { quality: '720p' }, 'PUT')).status, 402);
+  assert.equal((await call('/api/auth/session', first.cookie)).body.user.accessActive, true);
+  assert.equal((await call('/api/settings', first.cookie, { quality: '720p' }, 'PUT')).status, 200);
   assert.equal((await call('/api/settings', first.cookie)).status, 200);
   assert.equal((await call('/api/support', first.cookie, { text: 'Вопрос о продлении доступа.' })).status, 201);
   assert.equal((await call('/api/support', second.cookie)).body.tickets.length, 1);

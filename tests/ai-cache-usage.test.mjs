@@ -130,7 +130,9 @@ test('worker normalizes uploaded video advertisement and rejects media longer th
     assert.equal(result.status, seconds === 2 ? 'done' : 'error', result.error);
     if (seconds === 2) {
       const project = await store.getProject('owner', 'project');
-      assert.equal(project.ad.kind, 'video'); assert.equal(project.ad.mediaDuration, 2); assert.equal(project.ad.start, 27.5);
+      assert.equal(project.ad.kind, 'video'); assert.equal(project.ad.mediaDuration, 2);
+      // A new banner pauses the clip in the middle and plays for its own length.
+      assert.equal(project.ad.position, 'insert'); assert.equal(project.ad.start, 30); assert.equal(project.ad.duration, 2); assert.equal(project.ad.background, 'color');
       const metadata = await inspect(path.join(dataDir, 'ai/objects', project.files[project.ad.fileId].key));
       assert.equal(metadata.hasAudio, false); assert.equal(metadata.duration, 2);
     } else assert.match(result.error, /30 секунд/);

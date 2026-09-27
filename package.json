@@ -7,7 +7,7 @@
     "dev": "node scripts/dev.mjs",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/model.test.ts tests/landing.test.ts tests/server*.mjs",
+    "test": "node --test tests/model.test.ts tests/landing.test.ts tests/server*.mjs tests/banner-capcut.test.mjs",
     "preview": "node scripts/dev.mjs --preview"
   },
   "dependencies": {

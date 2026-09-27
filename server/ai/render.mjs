@@ -11,15 +11,36 @@ export const timelineDuration = settings => timeline(settings).reduce((total, se
 // 'insert' pauses the clip at `start`, plays the banner for `duration` seconds, then resumes the clip.
 export const MAX_INSERT_SECONDS = 30;
 export const adTotalDuration = (ad, clipDuration) => clipDuration + (ad?.position === 'insert' ? ad.duration : 0);
+export const AD_POSITIONS = ['auto','strip','top','bottom','center','final','insert','top-left','top-right','bottom-left','bottom-right'];
+export const AD_FITS = ['contain','cover','stretch'];
+// Placement controls let the client fine-tune the banner without asking AI (and spending requests):
+// offsetX/offsetY shift it by % of the frame, fit controls aspect handling, fade softens appearance,
+// background decides what fills the screen while the clip is paused ("color" = only the banner is visible).
 export function normalizeAd(input, clipDuration) {
   const insert = input.position === 'insert';
   const duration = input.duration ?? Math.min(5, clipDuration);
-  const ad = { position: 'auto', width: insert ? 100 : 45, height: insert ? 100 : 25, fill: false, start: Math.max(0, (clipDuration - duration) / 2), duration, opacity: 1, ...input };
+  const ad = { position: 'auto', width: insert ? 100 : 45, height: insert ? 100 : 25, fill: false, start: Math.max(0, (clipDuration - duration) / 2), duration, opacity: 1, offsetX: 0, offsetY: 0, fade: 0, background: 'color', backgroundColor: '#000000', ...input };
   if (insert && input.start === undefined) ad.start = clipDuration / 2;
-  if (!Number.isFinite(clipDuration) || clipDuration <= 0 || !['auto','strip','top','bottom','center','final','insert','top-left','top-right','bottom-left','bottom-right'].includes(ad.position)
-    || !['width','height','start','duration','opacity'].every(key => Number.isFinite(ad[key])) || typeof ad.fill !== 'boolean' || ad.width < 10 || ad.width > (insert ? 100 : 80) || ad.height < 10 || ad.height > 100 || ad.start < 0 || ad.start >= clipDuration || ad.duration <= 0
+  if (ad.fit === undefined) ad.fit = ad.fill ? 'stretch' : 'contain';
+  if (!Number.isFinite(clipDuration) || clipDuration <= 0 || !AD_POSITIONS.includes(ad.position)
+    || !['width','height','start','duration','opacity','offsetX','offsetY','fade'].every(key => Number.isFinite(ad[key])) || typeof ad.fill !== 'boolean' || ad.width < 10 || ad.width > (insert ? 100 : 80) || ad.height < 10 || ad.height > 100 || ad.start < 0 || ad.start >= clipDuration || ad.duration <= 0
     || (insert ? ad.duration > MAX_INSERT_SECONDS : ad.duration > clipDuration || (ad.position !== 'final' && ad.start + ad.duration > clipDuration + .001)) || ad.opacity < 0 || ad.opacity > 1) throw fail('Проверьте размер, время и прозрачность рекламы: она должна помещаться в ролике.');
+  if (Math.abs(ad.offsetX) > 50 || Math.abs(ad.offsetY) > 50 || ad.fade < 0 || ad.fade > 2 || ad.fade * 2 > ad.duration + .001 || !AD_FITS.includes(ad.fit) || !['color','blur'].includes(ad.background) || typeof ad.backgroundColor !== 'string' || !/^#[\da-f]{6}$/i.test(ad.backgroundColor)) throw fail('Проверьте сдвиг, появление и фон баннера.');
+  ad.fill = ad.fit === 'stretch';
   return ad;
+}
+// Switching between a pause insert and an overlay resets geometry the patch does not set, like the editor does.
+export function applyAdPatch(ad, patch, clipDuration) {
+  const next = { ...ad, ...patch }, insert = next.position === 'insert';
+  if ((ad.position === 'insert') !== insert) {
+    if (patch.width === undefined) next.width = insert ? 100 : 45;
+    if (patch.height === undefined) next.height = insert ? 100 : 25;
+    if (patch.offsetX === undefined) next.offsetX = 0;
+    if (patch.offsetY === undefined) next.offsetY = 0;
+    if (!insert && patch.duration === undefined) next.duration = Math.min(5, clipDuration);
+    if (patch.start === undefined) next.start = insert ? clipDuration / 2 : Math.max(0, (clipDuration - Math.min(next.duration, clipDuration)) / 2);
+  }
+  return normalizeAd(next, clipDuration);
 }
 export function normalizeSettings(input, duration) {
   const settings = { start: 0, end: Math.min(duration, 30), format: '9:16', cropX: 50, cropMode: 'smart', cropSmoothing: 0.7, muted: false, subtitles: true, subtitleStyle: 'Classic', subtitleSize: 54, subtitleColor: '', subtitlePosition: 'bottom', subtitleReplacements: [], keywords: [], musicId: '', musicVolume: 0.18, ...input };
@@ -242,7 +263,11 @@ export async function render({ input, output, settings, analysis = {}, ad, music
   if (strip) { filters += `;[${video}]pad=${width}:${height}:0:0:color=0x101010[reserved]`; video = 'reserved'; }
   const insert = Boolean(ad?.file && position === 'insert');
   const total = insert ? adTotalDuration(ad, duration) : duration;
-  const adBox = ad?.file ? `scale=${Math.round(width * ad.width / 100)}:${Math.round(height * (ad.height ?? 25) / 100)}${ad.fill ? '' : ':force_original_aspect_ratio=decrease'},setsar=1` : '';
+  const boxWidth = ad?.file ? Math.max(2, Math.round(width * ad.width / 100 / 2) * 2) : 0, boxHeight = ad?.file ? Math.max(2, Math.round(height * (ad.height ?? 25) / 100 / 2) * 2) : 0;
+  const fit = ad?.fit || (ad?.fill ? 'stretch' : 'contain');
+  const adBox = ad?.file ? (fit === 'stretch' ? `scale=${boxWidth}:${boxHeight}` : fit === 'cover' ? `scale=${boxWidth}:${boxHeight}:force_original_aspect_ratio=increase,crop=${boxWidth}:${boxHeight}` : `scale=${boxWidth}:${boxHeight}:force_original_aspect_ratio=decrease`) + ',setsar=1' : '';
+  const shiftX = ad?.offsetX ? `+W*${(ad.offsetX / 100).toFixed(4)}` : '', shiftY = ad?.offsetY ? `+H*${(ad.offsetY / 100).toFixed(4)}` : '';
+  const fades = (from, length) => ad?.fade > 0 ? `,fade=t=in:st=${from}:d=${ad.fade}:alpha=1,fade=t=out:st=${Math.max(from, from + length - ad.fade)}:d=${ad.fade}:alpha=1` : '';
   let speech = 'speech';
   if (insert) {
     // Freeze the paused frame (blurred) behind the banner, then continue the clip from the same moment.
@@ -250,9 +275,10 @@ export async function render({ input, output, settings, analysis = {}, ad, music
     filters += `;[${video}]split=3[insertpre][insertpost][insertfreeze]`;
     if (lead) filters += `;[insertpre]trim=end=${at},setpts=PTS-STARTPTS[pre]`; else filters += ';[insertpre]nullsink';
     filters += `;[insertpost]trim=start=${at},setpts=PTS-STARTPTS[post]`;
-    filters += `;[insertfreeze]trim=start=${Math.max(0, at - .05)}:duration=0.1,setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${gap},trim=duration=${gap},boxblur=20:2,eq=brightness=-0.25,setpts=PTS-STARTPTS[freeze]`;
-    filters += `;[${adIndex}:v]setpts=PTS-STARTPTS,trim=duration=${gap},setpts=PTS-STARTPTS,${adBox},format=rgba,colorchannelmixer=aa=${ad.opacity}[insertad]`;
-    filters += `;[freeze][insertad]overlay=(W-w)/2:(H-h)/2:eof_action=repeat,trim=duration=${gap},setsar=1[mid]`;
+    if (ad.background === 'blur') filters += `;[insertfreeze]trim=start=${Math.max(0, at - .05)}:duration=0.1,setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${gap},trim=duration=${gap},boxblur=20:2,eq=brightness=-0.25,setpts=PTS-STARTPTS[freeze]`;
+    else filters += `;[insertfreeze]nullsink;color=c=0x${(ad.backgroundColor || '#000000').slice(1)}:s=${width}x${height}:r=30:d=${gap},format=yuv420p,setsar=1[freeze]`;
+    filters += `;[${adIndex}:v]setpts=PTS-STARTPTS,trim=duration=${gap},setpts=PTS-STARTPTS,${adBox},format=rgba,colorchannelmixer=aa=${ad.opacity}${fades(0, gap)}[insertad]`;
+    filters += `;[freeze][insertad]overlay=(W-w)/2${shiftX}:(H-h)/2${shiftY}:eof_action=repeat,trim=duration=${gap},setsar=1[mid]`;
     filters += `;${lead ? '[pre]' : ''}[mid][post]concat=n=${lead ? 3 : 2}:v=1:a=0[inserted]`; video = 'inserted';
     if (voice) {
       const pcm = 'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo';
@@ -266,7 +292,7 @@ export async function render({ input, output, settings, analysis = {}, ad, music
     const y = strip ? `${pictureHeight}+(H-${pictureHeight}-h)/2` : position?.startsWith('top') ? 'H*0.1' : position === 'center' || position === 'final' ? '(H-h)/2' : 'H*0.78-h';
     const x = position?.endsWith('-left') ? 'W*0.02' : position?.endsWith('-right') ? 'W-w-W*0.02' : '(W-w)/2';
     const start = position === 'final' ? Math.max(0, duration-ad.duration) : ad.start;
-    filters += `;[${adIndex}:v]setpts=PTS-STARTPTS+${start}/TB,${adBox},format=rgba,colorchannelmixer=aa=${ad.opacity}[ad];[${video}][ad]overlay=${x}:${y}:eof_action=pass:enable='gte(t,${start})*lt(t,${Math.min(duration,start+ad.duration)})'[advertised]`; video = 'advertised';
+    filters += `;[${adIndex}:v]setpts=PTS-STARTPTS+${start}/TB,${adBox},format=rgba,colorchannelmixer=aa=${ad.opacity}${fades(start, Math.min(duration, start + ad.duration) - start)}[ad];[${video}][ad]overlay=${x}${shiftX}:${y}${shiftY}:eof_action=pass:enable='gte(t,${start})*lt(t,${Math.min(duration,start+ad.duration)})'[advertised]`; video = 'advertised';
   }
   if (music) {
     filters += `;[${musicIndex}:a]atrim=duration=${total},asetpts=PTS-STARTPTS,volume=${settings.musicVolume}[music]`;

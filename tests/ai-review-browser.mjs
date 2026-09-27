@@ -130,15 +130,18 @@ try {
           assert.equal(requests.findLast(r => r.action === 'restore').body.versionId, 'version-one');
         }
         if (state === 'ADDING_AD') {
-          await page.getByRole('img', { name: 'Загруженное рекламное изображение' }).waitFor();
-          assert.match(await page.locator('.ai-ad input[type=file]').getAttribute('accept'), /\.mp4/);
+          await page.getByRole('img', { name: 'Ваш баннер' }).waitFor();
+          assert.match(await page.locator('.ai-banner input[type=file]').getAttribute('accept'), /\.mp4/);
           assert.equal(await page.getByRole('button', { name: 'Экспортировать MP4', exact: true }).isDisabled(), false);
           await screenshot('advertisement', width);
+          await page.getByRole('button', { name: 'Поверх видео', exact: true }).click();
           await page.getByLabel('Положение').selectOption('bottom-right');
           assert.equal(await page.getByRole('button', { name: 'Экспортировать MP4', exact: true }).isDisabled(), true);
-          await page.getByRole('button', { name: 'Предпросмотр рекламы', exact: true }).click();
+          await page.getByRole('button', { name: 'Сохранить баннер', exact: true }).click();
           await page.waitForFunction(() => !Array.from(document.querySelectorAll('button')).find(button => button.textContent === 'Экспортировать MP4')?.disabled);
           assert.equal(requests.findLast(r => r.action === 'advertisement').body.position, 'bottom-right');
+          await page.getByRole('button', { name: 'Точный предпросмотр MP4 с баннером', exact: true }).click();
+          await page.waitForFunction(() => document.querySelector('video[aria-label="Предпросмотр итогового ролика с баннером"]'));
           assert.ok(requests.some(r => r.action === 'ad-preview'));
           await page.getByText('Изменить формат', { exact: true }).click();
           await page.getByLabel('Новый формат', { exact: true }).selectOption('16:9');
@@ -172,7 +175,7 @@ try {
     await page.goto(`${base}/app/ai/visual-fixture`);
     await page.getByRole('heading',{name:'Готовые ролики',exact:true}).waitFor();
     assert.equal(await page.getByRole('link',{name:'Скачать MP4',exact:true}).count(),2);
-    await page.getByRole('heading',{name:'Реклама — по желанию'}).waitFor();
+    await page.getByRole('heading',{name:'Баннер — по желанию'}).waitFor();
     assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));
     await page.getByRole('button',{name:'Настроить ролик',exact:true}).first().click();
     await page.locator('.ai-review').waitFor();

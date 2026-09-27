@@ -7,10 +7,25 @@ import { createStore } from './store.mjs';
 import { createStorage } from './storage.mjs';
 import { OpenRouterProvider, PRIMARY_VIDEO_MODEL, FAST_EDIT_MODEL, ANALYSIS_VERSION } from './openai.mjs';
 import { analyzeLongVideo } from './analysis.mjs';
-import { ff, run, inspect, normalizeSettings, normalizeAd, timelineDuration, adTotalDuration, render, fail } from './render.mjs';
+import { ff, run, inspect, normalizeSettings, normalizeAd, applyAdPatch, timelineDuration, adTotalDuration, render, fail } from './render.mjs';
 import { createTokens } from './tokens.mjs';
+import { exportSrt } from './project-export.mjs';
+import { writeZip } from './zip.mjs';
 
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const busyStates = ['PREPROCESSING','TRANSCRIBING','ANALYZING','RENDERING','EXPORTING'];
+const seconds = value => `${Math.round(value * 10) / 10} сек.`;
+// Plain-text guide shipped inside the CapCut pack (CapCut has no public project format to import).
+export function capcutGuide({ settings, ad, subtitles, music }) {
+  const steps = ['Откройте CapCut и создайте новый проект.', `Импортируйте 1-video.mp4 (формат ${settings.format}) и перетащите его на таймлайн.`];
+  if (subtitles) steps.push('Субтитры: Текст → Автосубтитры → «Импорт файла» (или «Импорт субтитров») и выберите 2-subtitles.srt. Текст и стиль можно править прямо в CapCut.');
+  if (ad) steps.push(ad.position === 'insert'
+    ? `Баннер: поставьте курсор на ${seconds(ad.start)}, нажмите «Разделить», вставьте файл баннера между частями и растяните его на ${seconds(ad.duration)}. Так ролик встанет на паузу и покажет только баннер.`
+    : `Баннер: добавьте файл баннера как «Наложение» с ${seconds(ad.position === 'final' ? Math.max(0, timelineDuration(settings) - ad.duration) : ad.start)} на ${seconds(ad.duration)} и настройте масштаб и положение.`);
+  if (music) steps.push('Музыка: добавьте файл 4-music на аудиодорожку и уменьшите громкость под речь.');
+  steps.push('Экспорт: нажмите «Экспорт» в CapCut и выберите 1080p.');
+  return ['SCENZA → CapCut', '', ...steps.map((step, index) => `${index + 1}. ${step}`)].join('\r\n') + '\r\n';
+}
 const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || path.join(workspace,'.scena'), env = process.env, provider, python } = {}) {
   const root=path.join(dataDir,'ai'), cache=path.join(root,'cache'); await fs.mkdir(cache,{recursive:true});
@@ -37,7 +52,7 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
     const timer=setInterval(()=>void heartbeat().catch(error=>{leaseError=error;operation.abort();}),10000);
     const save=async()=>{if(leaseError)throw leaseError;await heartbeat();await store.saveProject(job.ownerId,project);};
     const stage=async(status,label)=>{project.status=status;currentStage=label;progress=null;await save();};
-    const put=async(id,file,mime,download=false)=>{if(leaseError)throw leaseError;await heartbeat();const key=`${project.id}/${id}${path.extname(file)}`;await storage.put(key,file);project.files[id]={key,mime,...(download?{download:true}:{})};return id;};
+    const put=async(id,file,mime,download=false,filename='')=>{if(leaseError)throw leaseError;await heartbeat();const key=`${project.id}/${id}${path.extname(file)}`;await storage.put(key,file);project.files[id]={key,mime,...(download?{download:true}:{}),...(filename?{filename}:{})};return id;};
     const get=async(id)=>{if(!project.files[id])throw fail('Исходный файл не найден.',404);const target=path.join(folder,`${id}${path.extname(project.files[id].key)}`);await storage.get(project.files[id].key,target);return target;};
     const onProgress=value=>{progress=value;};
     const sourceIdentity=()=>fingerprint([project.sourceFingerprint,project.files.original?.key,project.upload?.size,project.duration]);
@@ -61,6 +76,8 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
     };
     try {
       const completedVersion=[...(project.versions||[]),...(project.exports||[])].find(version=>version.jobId===job.id&&project.files[version.id]);
+      const finishedPack=job.payload?.capcut&&Object.values(project.capcutPacks||{}).some(pack=>pack.jobId===job.id&&project.files[pack.fileId]);
+      if(finishedPack){project.status=job.payload.previousStatus||'READY';project.error=null;await save();await store.finishJob(job.id,workerId,{result:{projectId:project.id}});return;}
       if(completedVersion||(project.adPreviewJobId===job.id&&project.files[project.adPreview])) {
         project.status=job.type==='export'?'COMPLETED':job.payload.adPreview?'ADDING_AD':'AWAITING_APPROVAL';
         project.error=null;await save();await store.finishJob(job.id,workerId,{result:{projectId:project.id}});return;
@@ -144,13 +161,36 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
         await put(job.payload.assetId,output,videoAd?'video/mp4':isAd?'image/png':'audio/mp4');
         if(isAd) {
           const clipSettings=project.settings||project.candidates[0]?.settings||normalizeSettings(project.candidates[0]||{},project.duration);
-          project.ad={...normalizeAd({},timelineDuration(clipSettings)),fileId:job.payload.assetId,kind:videoAd?'video':'image',...(videoAd?{mediaDuration:adMetadata.duration}:{})};project.adPreview=null;
-          await save();currentStage='Добавляем баннер в готовые ролики';await renderCandidates();
-          project.status=project.currentVersion?'ADDING_AD':'READY';
+          // By default the clip pauses in the middle and only the banner is shown on a solid background.
+          const previous=project.ad&&typeof project.ad==='object'?Object.fromEntries(['position','width','height','fit','start','duration','opacity','offsetX','offsetY','fade','background','backgroundColor'].filter(key=>project.ad[key]!==undefined).map(key=>[key,project.ad[key]])):null;
+          const clipLength=timelineDuration(clipSettings),defaults={position:'insert',duration:videoAd?Math.min(30,Math.round(adMetadata.duration*10)/10):5};
+          let placement;try{placement=normalizeAd(previous?{...previous,...(videoAd&&previous.position==='insert'?{duration:defaults.duration}:{})}:defaults,clipLength);}catch{placement=normalizeAd(defaults,clipLength);}
+          project.ad={...placement,fileId:job.payload.assetId,kind:videoAd?'video':'image',...(videoAd?{mediaDuration:adMetadata.duration}:{})};project.adPreview=null;
+          await save();
+          // Once a clip is being reviewed, the banner is previewed live in the browser; re-rendering every found moment would only waste time.
+          if(!project.currentVersion){currentStage='Добавляем баннер в готовые ролики';await renderCandidates();}
+          project.status=project.currentVersion?(job.payload.previousStatus==='AWAITING_APPROVAL'?'AWAITING_APPROVAL':'ADDING_AD'):'READY';
         } else {project.music.push({id:job.payload.assetId,name:job.payload.name,mood:'user',bpm:null,genre:'user',energy:null,tags:['Загружен пользователем']});project.status=job.payload.previousStatus;}
         await save();await fs.rm(input,{force:true});
       }
-      if(['preview','revise','export'].includes(job.type)) {
+      if(job.type==='export'&&job.payload.capcut) {
+        await stage('EXPORTING','Собираем пакет для CapCut');
+        const settings=normalizeSettings(job.payload.settings,project.duration),original=await get('original'),packId=`capcut-${randomUUID()}`,clean=path.join(folder,'clean.mp4');
+        // A clean render (no burned-in captions or banner) keeps everything editable in CapCut.
+        await render({input:original,output:clean,settings:{...settings,subtitles:false,musicId:''},analysis:project.analysis,ad:null,music:null,preview:false,onProgress,signal:operation.signal});
+        const entries=[{name:'1-video.mp4',file:clean}],srt=exportSrt(project,settings);
+        if(srt.trim())entries.push({name:'2-subtitles.srt',data:srt});
+        const banner=project.ad?.fileId&&project.files[project.ad.fileId]?await get(project.ad.fileId):null;
+        if(banner)entries.push({name:`3-banner${path.extname(banner)}`,file:banner});
+        const music=settings.musicId&&project.files[settings.musicId]?await get(settings.musicId):null;
+        if(music)entries.push({name:`4-music${path.extname(music)}`,file:music});
+        entries.push({name:'CapCut - instrukciya.txt',data:capcutGuide({settings,ad:banner?project.ad:null,subtitles:!!srt.trim(),music:!!music})});
+        const archive=path.join(folder,`${packId}.zip`);await writeZip(archive,entries);
+        await put(packId,archive,'application/zip',true,`project-${Number(job.payload.number)||1}-capcut.zip`);
+        project.capcutPacks={...(project.capcutPacks||{}),[job.payload.key||'current']:{fileId:packId,jobId:job.id,createdAt:new Date().toISOString()}};
+        project.status=job.payload.previousStatus||'READY';project.error=null;await save();
+      }
+      if(['preview','revise','export'].includes(job.type)&&!job.payload.capcut) {
         await stage(job.type==='export'?'EXPORTING':'RENDERING',job.type==='revise'?'Применяем правки':'Монтируем ролик');
         let settings=normalizeSettings(job.payload.settings||project.settings,project.duration);
         let projectAd=project.ad,adEdited=false;
@@ -168,7 +208,7 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
           settings=normalizeSettings({...settings,...(('start' in patch||'end' in patch)&&!('segments' in patch)?{segments:undefined}:{}),...patch},project.duration);
           if(adPatch) {
             if(!project.ad)throw fail('Сначала загрузите рекламный файл.',400);
-            projectAd=normalizeAd({...project.ad,...adPatch},timelineDuration(settings));adEdited=true;
+            projectAd={...project.ad,...applyAdPatch(project.ad,adPatch,timelineDuration(settings))};adEdited=true;
           }
         }
         const clipDuration=timelineDuration(settings);
@@ -199,7 +239,8 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
     } catch(error) {
       if(!leaseError){
         const previousVersion=job.type==='revise'&&project.versions?.some(version=>version.id===project.currentVersion);
-        project.status=previousVersion?'AWAITING_APPROVAL':'FAILED';
+        const restore=(job.payload?.capcut||job.type==='asset')&&job.payload.previousStatus&&!busyStates.includes(job.payload.previousStatus);
+        project.status=restore?job.payload.previousStatus:previousVersion?'AWAITING_APPROVAL':'FAILED';
         project.error=error.status||error.code?.startsWith('AI_')?error.message.replaceAll('Gemini API','сервиса анализа').replaceAll('Gemini','Сервис анализа').replaceAll('GEMINI_API_KEY','ключ сервиса анализа').replaceAll('OPENROUTER_API_KEY','ключ сервиса анализа'):'Обработка прервана. Проверьте настройки сервиса и повторите.';
         if(previousVersion)project.error+=' Предыдущая версия ролика сохранена. Можно подтвердить её или отправить другую правку.';
         await save().catch(()=>{});await store.finishJob(job.id,workerId,{error:project.error}).catch(()=>{});

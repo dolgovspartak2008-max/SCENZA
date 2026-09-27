@@ -227,7 +227,8 @@ test('email requires ownership verification, persists one trial and rejects repl
   const login = await f.call('/email/start', { mode: 'login', email: 'person@example.com', password });
   assert.equal(login.status, 200);
   assert.equal(login.body.user.trialStartedAt, trial);
-  assert.equal(login.body.user.accessActive, false);
+  assert.equal(login.body.user.accessActive, true);
+  assert.equal(login.body.user.accessSource, 'trial');
   const stored = await fs.readFile(path.join(f.dataDir, 'accounts.json'), 'utf8');
   assert.equal(stored.includes(password), false);
   assert.equal(stored.includes(f.mail[0].code), false);
@@ -433,5 +434,6 @@ test('signed-in users redeem access promo codes on the website', async t => {
   assert.equal((await f.call('/promo', { code: 'WRONG1' })).status, 400);
   const redeemed = await f.call('/promo', { code: 'welcome' });
   assert.equal(redeemed.status, 200);
-  assert.ok(Date.parse(redeemed.body.user.accessUntil) > Date.parse(user.accessUntil));
+  assert.equal(user.accessUntil, null);
+  assert.ok(Date.parse(redeemed.body.user.accessUntil) > Date.parse(user.trialStartedAt));
 });
