@@ -8,11 +8,17 @@ export const fail = (message, status = 400) => Object.assign(new Error(message),
 const styles = ['Minimal', 'Classic', 'Dynamic', 'Bold', 'Cinematic'];
 const timeline = settings => settings.segments || [{ start: settings.start, end: settings.end }];
 export const timelineDuration = settings => timeline(settings).reduce((total, segment) => total + segment.end - segment.start, 0);
+// 'insert' pauses the clip at `start`, plays the banner for `duration` seconds, then resumes the clip.
+export const MAX_INSERT_SECONDS = 30;
+export const adTotalDuration = (ad, clipDuration) => clipDuration + (ad?.position === 'insert' ? ad.duration : 0);
 export function normalizeAd(input, clipDuration) {
+  const insert = input.position === 'insert';
   const duration = input.duration ?? Math.min(5, clipDuration);
-  const ad = { position: 'auto', width: 45, start: Math.max(0, (clipDuration - duration) / 2), duration, opacity: 1, ...input };
-  if (!Number.isFinite(clipDuration) || clipDuration <= 0 || !['auto','strip','top','bottom','center','final','top-left','top-right','bottom-left','bottom-right'].includes(ad.position)
-    || !['width','start','duration','opacity'].every(key => Number.isFinite(ad[key])) || ad.width < 10 || ad.width > 80 || ad.start < 0 || ad.start >= clipDuration || ad.duration <= 0 || ad.duration > clipDuration || (ad.position !== 'final' && ad.start + ad.duration > clipDuration + .001) || ad.opacity < 0 || ad.opacity > 1) throw fail('Проверьте размер, время и прозрачность рекламы: она должна помещаться в ролике.');
+  const ad = { position: 'auto', width: insert ? 100 : 45, height: insert ? 100 : 25, fill: false, start: Math.max(0, (clipDuration - duration) / 2), duration, opacity: 1, ...input };
+  if (insert && input.start === undefined) ad.start = clipDuration / 2;
+  if (!Number.isFinite(clipDuration) || clipDuration <= 0 || !['auto','strip','top','bottom','center','final','insert','top-left','top-right','bottom-left','bottom-right'].includes(ad.position)
+    || !['width','height','start','duration','opacity'].every(key => Number.isFinite(ad[key])) || typeof ad.fill !== 'boolean' || ad.width < 10 || ad.width > (insert ? 100 : 80) || ad.height < 10 || ad.height > 100 || ad.start < 0 || ad.start >= clipDuration || ad.duration <= 0
+    || (insert ? ad.duration > MAX_INSERT_SECONDS : ad.duration > clipDuration || (ad.position !== 'final' && ad.start + ad.duration > clipDuration + .001)) || ad.opacity < 0 || ad.opacity > 1) throw fail('Проверьте размер, время и прозрачность рекламы: она должна помещаться в ролике.');
   return ad;
 }
 export function normalizeSettings(input, duration) {
@@ -234,22 +240,44 @@ export async function render({ input, output, settings, analysis = {}, ad, music
     filters += `;[${video}]ass=${subtitle}[captioned]`; video = 'captioned';
   }
   if (strip) { filters += `;[${video}]pad=${width}:${height}:0:0:color=0x101010[reserved]`; video = 'reserved'; }
-  if (ad?.file) {
+  const insert = Boolean(ad?.file && position === 'insert');
+  const total = insert ? adTotalDuration(ad, duration) : duration;
+  const adBox = ad?.file ? `scale=${Math.round(width * ad.width / 100)}:${Math.round(height * (ad.height ?? 25) / 100)}${ad.fill ? '' : ':force_original_aspect_ratio=decrease'},setsar=1` : '';
+  let speech = 'speech';
+  if (insert) {
+    // Freeze the paused frame (blurred) behind the banner, then continue the clip from the same moment.
+    const at = Math.min(ad.start, duration), gap = ad.duration, lead = at >= .05;
+    filters += `;[${video}]split=3[insertpre][insertpost][insertfreeze]`;
+    if (lead) filters += `;[insertpre]trim=end=${at},setpts=PTS-STARTPTS[pre]`; else filters += ';[insertpre]nullsink';
+    filters += `;[insertpost]trim=start=${at},setpts=PTS-STARTPTS[post]`;
+    filters += `;[insertfreeze]trim=start=${Math.max(0, at - .05)}:duration=0.1,setpts=PTS-STARTPTS,tpad=stop_mode=clone:stop_duration=${gap},trim=duration=${gap},boxblur=20:2,eq=brightness=-0.25,setpts=PTS-STARTPTS[freeze]`;
+    filters += `;[${adIndex}:v]setpts=PTS-STARTPTS,trim=duration=${gap},setpts=PTS-STARTPTS,${adBox},format=rgba,colorchannelmixer=aa=${ad.opacity}[insertad]`;
+    filters += `;[freeze][insertad]overlay=(W-w)/2:(H-h)/2:eof_action=repeat,trim=duration=${gap},setsar=1[mid]`;
+    filters += `;${lead ? '[pre]' : ''}[mid][post]concat=n=${lead ? 3 : 2}:v=1:a=0[inserted]`; video = 'inserted';
+    if (voice) {
+      const pcm = 'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo';
+      filters += `;[speech]asplit=2[speechpre][speechpost]`;
+      filters += lead ? `;[speechpre]atrim=end=${at},asetpts=PTS-STARTPTS,${pcm}[spre]` : ';[speechpre]anullsink';
+      filters += `;[speechpost]atrim=start=${at},asetpts=PTS-STARTPTS,${pcm}[spost];anullsrc=r=48000:cl=stereo,atrim=duration=${gap},${pcm}[sgap]`;
+      filters += `;${lead ? '[spre]' : ''}[sgap][spost]concat=n=${lead ? 3 : 2}:v=0:a=1[speechinserted]`; speech = 'speechinserted';
+    }
+  }
+  if (ad?.file && !insert) {
     const y = strip ? `${pictureHeight}+(H-${pictureHeight}-h)/2` : position?.startsWith('top') ? 'H*0.1' : position === 'center' || position === 'final' ? '(H-h)/2' : 'H*0.78-h';
     const x = position?.endsWith('-left') ? 'W*0.02' : position?.endsWith('-right') ? 'W-w-W*0.02' : '(W-w)/2';
     const start = position === 'final' ? Math.max(0, duration-ad.duration) : ad.start;
-    filters += `;[${adIndex}:v]setpts=PTS-STARTPTS+${start}/TB,scale=${Math.round(width * ad.width / 100)}:${Math.round(height*.25)}:force_original_aspect_ratio=decrease,format=rgba,colorchannelmixer=aa=${ad.opacity}[ad];[${video}][ad]overlay=${x}:${y}:eof_action=pass:enable='gte(t,${start})*lt(t,${Math.min(duration,start+ad.duration)})'[advertised]`; video = 'advertised';
+    filters += `;[${adIndex}:v]setpts=PTS-STARTPTS+${start}/TB,${adBox},format=rgba,colorchannelmixer=aa=${ad.opacity}[ad];[${video}][ad]overlay=${x}:${y}:eof_action=pass:enable='gte(t,${start})*lt(t,${Math.min(duration,start+ad.duration)})'[advertised]`; video = 'advertised';
   }
   if (music) {
-    filters += `;[${musicIndex}:a]atrim=duration=${duration},asetpts=PTS-STARTPTS,volume=${settings.musicVolume}[music]`;
-    if (voice) filters += ';[speech]asplit[voice][duck];[music][duck]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=700[quiet];[voice][quiet]amix=inputs=2:duration=first:normalize=0[audio]';
+    filters += `;[${musicIndex}:a]atrim=duration=${total},asetpts=PTS-STARTPTS,volume=${settings.musicVolume}[music]`;
+    if (voice) filters += `;[${speech}]asplit[voice][duck];[music][duck]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=700[quiet];[voice][quiet]amix=inputs=2:duration=first:normalize=0[audio]`;
     else filters += ';[music]anull[audio]';
   }
   args.push('-filter_complex', filters, '-map', `[${video}]`);
   if (music) args.push('-map', '[audio]', '-c:a', 'aac', '-b:a', '192k');
-  else if (voice) args.push('-map', '[speech]', '-c:a', 'aac', '-b:a', '192k');
+  else if (voice) args.push('-map', `[${speech}]`, '-c:a', 'aac', '-b:a', '192k');
   else args.push('-an');
-  args.push('-t', String(duration), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', preview ? '25' : '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output);
-  try { await ff(args, { cwd, duration, onProgress, signal }); }
+  args.push('-t', String(total), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', preview ? '25' : '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output);
+  try { await ff(args, { cwd, duration: total, onProgress, signal }); }
   finally { await fs.rm(path.join(cwd, subtitle), { force: true }); }
 }

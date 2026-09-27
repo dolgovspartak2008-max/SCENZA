@@ -23,7 +23,7 @@ export function candidateOverlap(left, right) {
   return candidateSegments(left).reduce((sum, a) => sum + candidateSegments(right).reduce((overlap, b) => overlap + Math.max(0, Math.min(a.end, b.end) - Math.max(a.start, b.start)), 0), 0);
 }
 const editProperties = {
-  ad: { type: 'object', properties: { position: choice(['auto', 'top', 'bottom', 'center', 'final', 'top-left', 'top-right', 'bottom-left', 'bottom-right']), width: number(10, 80), start: number(0, 120), duration: number(0.1, 120), opacity: number(0, 1) }, required: [], additionalProperties: false },
+  ad: { type: 'object', properties: { position: choice(['auto', 'top', 'bottom', 'center', 'final', 'insert', 'top-left', 'top-right', 'bottom-left', 'bottom-right']), width: number(10, 80), start: number(0, 120), duration: number(0.1, 120), opacity: number(0, 1) }, required: [], additionalProperties: false },
   segments: candidateProperties.segments, keywords: candidateProperties.keywords,
   start: number(0, Number.MAX_SAFE_INTEGER), end: number(0, Number.MAX_SAFE_INTEGER),
   cropX: number(0, 100), format: choice(formats), cropMode: choice(['smart', 'manual']),
@@ -219,7 +219,8 @@ function explicitAdvertisement(request, ad) {
     else if (/(?:субтитр|шрифт|ролик|формат|звук)/.test(clause)) context = false;
     if (!context || /(?:^|\s)не(?:\s|$)/.test(clause)) continue;
     const right = /справа/.test(clause), left = /слева/.test(clause), top = /сверху|наверху/.test(clause), bottom = /снизу|внизу/.test(clause);
-    if (right !== left && top !== bottom) patch.position = `${top ? 'top' : 'bottom'}-${right ? 'right' : 'left'}`;
+    if (/пауз|останов|прерв|вставк/.test(clause)) patch.position = 'insert';
+    else if (right !== left && top !== bottom) patch.position = `${top ? 'top' : 'bottom'}-${right ? 'right' : 'left'}`;
     else if (top !== bottom && !right && !left) patch.position = top ? 'top' : 'bottom';
     else if (/по центру|в центре/.test(clause)) patch.position = 'center';
     else if (/в конце/.test(clause)) patch.position = 'final';

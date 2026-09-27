@@ -2,20 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import './page-loader.css';
 
-// While the page is still loading, the bar creeps toward this point and never claims to be done.
+// While the page loads, the bar eases toward this point; it only reaches the end once loading has finished.
 const LOADING_CEILING = 0.9;
-// Once loading has finished, the bar always runs to the very end before the overlay fades away.
+const LOADING_MS = 9000;
 const FINISH_MS = 520;
 const FADE_MS = 450;
 const REDUCED_FADE_MS = 150;
-
-const easeOutCubic = (value: number) => 1 - (1 - value) ** 3;
 
 export function PageLoader({ open, onContinue, language = 'ru' }: { open: boolean; onContinue: () => void; language?: 'ru' | 'en' }) {
   const [mounted, setMounted] = useState(open);
   const [closing, setClosing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const progressRef = useRef(0);
   const continueRef = useRef(onContinue);
   continueRef.current = onContinue;
   const ru = language === 'ru';
@@ -29,50 +26,38 @@ export function PageLoader({ open, onContinue, language = 'ru' }: { open: boolea
     return () => clearTimeout(deadline);
   }, [open]);
 
-  // Progress is written straight to a CSS variable, so the bar animates without re-rendering React.
+  // Transform animations run on the compositor, so the bar stays smooth even while the 3D scene loads on the main thread.
   useEffect(() => {
     if (!mounted) return;
-    const element = ref.current;
+    const fill = ref.current?.querySelector<HTMLElement>('.scenza-page-loader-fill');
+    const playhead = ref.current?.querySelector<HTMLElement>('.scenza-page-loader-playhead');
+    if (!fill || !playhead) return;
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const paint = (value: number) => {
-      progressRef.current = value;
-      element?.style.setProperty('--scenza-loader-progress', value.toFixed(4));
+    const frames = (from: number, to: number) => [
+      [{ transform: `scaleX(${from})` }, { transform: `scaleX(${to})` }],
+      [{ transform: `translateX(${from * 100}%)` }, { transform: `translateX(${to * 100}%)` }],
+    ] as const;
+    const run = (from: number, to: number, options: KeyframeAnimationOptions) => {
+      const [fillFrames, headFrames] = frames(from, to);
+      return [fill.animate([...fillFrames], { fill: 'forwards', ...options }), playhead.animate([...headFrames], { fill: 'forwards', ...options })];
     };
-    let frame = 0;
     let timer = 0;
 
     if (open) {
-      let previous = 0;
-      const creep = (time: number) => {
-        const elapsed = previous ? Math.min(time - previous, 64) : 16;
-        previous = time;
-        const current = progressRef.current;
-        paint(current + (LOADING_CEILING - current) * (1 - Math.exp(-elapsed / 1400)));
-        frame = requestAnimationFrame(creep);
-      };
-      if (reduced) paint(0.5);
-      else frame = requestAnimationFrame(creep);
-      return () => cancelAnimationFrame(frame);
+      const animations = reduced ? run(0.5, 0.5, { duration: 0 }) : run(0, LOADING_CEILING, { duration: LOADING_MS, easing: 'cubic-bezier(.12, .72, .24, 1)' });
+      return () => animations.forEach(animation => animation.pause());
     }
 
+    const current = new DOMMatrixReadOnly(getComputedStyle(fill).transform).a;
+    fill.getAnimations().forEach(animation => animation.cancel());
+    playhead.getAnimations().forEach(animation => animation.cancel());
     const fade = () => {
       setClosing(true);
       timer = window.setTimeout(() => setMounted(false), reduced ? REDUCED_FADE_MS : FADE_MS);
     };
-    if (reduced) { paint(1); timer = window.setTimeout(fade, 120); }
-    else {
-      const from = progressRef.current;
-      let start = 0;
-      const finish = (time: number) => {
-        start ||= time;
-        const t = Math.min((time - start) / FINISH_MS, 1);
-        paint(from + (1 - from) * easeOutCubic(t));
-        if (t < 1) frame = requestAnimationFrame(finish);
-        else timer = window.setTimeout(fade, 90);
-      };
-      frame = requestAnimationFrame(finish);
-    }
-    return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
+    const [finishing] = run(Number.isFinite(current) ? current : 0, 1, { duration: reduced ? 0 : FINISH_MS, easing: 'cubic-bezier(.22, .61, .36, 1)' });
+    finishing.onfinish = () => { timer = window.setTimeout(fade, reduced ? 120 : 90); };
+    return () => { finishing.onfinish = null; clearTimeout(timer); };
   }, [open, mounted]);
 
   useEffect(() => {

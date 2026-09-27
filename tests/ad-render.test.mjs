@@ -55,3 +55,26 @@ test('sparse or missing face detections preserve both source edges in smart mode
     }
   }
 });
+
+test('insert banner pauses the clip, plays the banner and then resumes the clip', async t => {
+  await mkdir('tmp', { recursive: true });
+  const dir = await mkdtemp(path.resolve('tmp/ad-insert-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const input = path.join(dir, 'source.mp4'), adFile = path.join(dir, 'advertisement.mp4');
+  await renderer.ff(['-f', 'lavfi', '-i', 'color=blue:size=320x180:rate=10:duration=4', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=4', '-c:v', 'libx264', '-c:a', 'aac', '-shortest', input]);
+  await renderer.ff(['-f', 'lavfi', '-i', 'color=red:size=200x100:rate=25:duration=1.5', '-c:v', 'libx264', adFile]);
+  assert.throws(() => renderer.normalizeAd({ position: 'insert', start: 1, duration: 31 }, 4), 'insert is capped at 30 seconds');
+  const ad = renderer.normalizeAd({ position: 'insert', start: 2, duration: 1.5, width: 100, height: 100, fill: true }, 4);
+  assert.equal(renderer.adTotalDuration(ad, 4), 5.5);
+  const output = path.join(dir, 'inserted.mp4');
+  await renderer.render({ input, output, preview: true, analysis: { hasAudio: true }, settings: renderer.normalizeSettings({ start: 0, end: 4, format: '16:9', subtitles: false, cropMode: 'manual' }, 4), ad: { ...ad, file: adFile, kind: 'video' } });
+  const metadata = await renderer.inspect(output);
+  assert.ok(Math.abs(metadata.duration - 5.5) < .2, `duration ${metadata.duration}`);
+  assert.equal(metadata.hasAudio, true);
+  for (const [time, expected] of [[1, 'blue'], [2.7, 'red'], [4.8, 'blue']]) {
+    const sample = spawnSync(ffmpeg, ['-v', 'error', '-ss', String(time), '-i', output, '-vf', `crop=2:2:${Math.round(metadata.width / 2)}:${Math.round(metadata.height / 2)}`, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'], { windowsHide: true });
+    assert.equal(sample.status, 0);
+    const colors = [...sample.stdout.subarray(0, 3)], channel = { red: 0, blue: 2 }[expected];
+    assert.ok(colors[channel] > Math.max(...colors.filter((_, i) => i !== channel)) + 100, `t=${time}: ${colors}, expected ${expected}`);
+  }
+});

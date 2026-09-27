@@ -7,7 +7,7 @@ import { createStore } from './store.mjs';
 import { createStorage } from './storage.mjs';
 import { OpenRouterProvider, PRIMARY_VIDEO_MODEL, FAST_EDIT_MODEL, ANALYSIS_VERSION } from './openai.mjs';
 import { analyzeLongVideo } from './analysis.mjs';
-import { ff, run, inspect, normalizeSettings, normalizeAd, timelineDuration, render, fail } from './render.mjs';
+import { ff, run, inspect, normalizeSettings, normalizeAd, timelineDuration, adTotalDuration, render, fail } from './render.mjs';
 
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
@@ -48,11 +48,11 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
           if(!candidate.ready || !project.files[candidate.id] || candidate.adFileId !== (project.ad?.fileId||null)) {
             const output=path.join(folder,`${candidate.id}.mp4`);
             const settings=normalizeSettings({start:candidate.start,end:candidate.end,...(candidate.segments?{segments:candidate.segments}:{}),keywords:candidate.keywords||[],subtitleStyle:'Dynamic'},project.duration);
-            const adDuration=Math.min(project.ad?.duration||5,timelineDuration(settings));
-            const ad=project.ad?{...normalizeAd({...project.ad,start:(timelineDuration(settings)-adDuration)/2,duration:adDuration},timelineDuration(settings)),file:await get(project.ad.fileId)}:null;
+            const insertAd=project.ad?.position==='insert',adDuration=insertAd?project.ad.duration:Math.min(project.ad?.duration||5,timelineDuration(settings));
+            const ad=project.ad?{...normalizeAd({...project.ad,start:insertAd?timelineDuration(settings)/2:(timelineDuration(settings)-adDuration)/2,duration:adDuration},timelineDuration(settings)),file:await get(project.ad.fileId)}:null;
             await render({input:original,output,settings,analysis:project.analysis,ad,preview:false,onProgress,signal:operation.signal});
             await put(candidate.id,output,'video/mp4',true);
-            candidate.adFileId=project.ad?.fileId||null;candidate.ready=true;candidate.settings=settings;candidate.duration=timelineDuration(settings);
+            candidate.adFileId=project.ad?.fileId||null;candidate.ready=true;candidate.settings=settings;candidate.duration=adTotalDuration(ad,timelineDuration(settings));
             candidate.createdAt=new Date().toISOString();
           }
           progress=Math.round((i+1)/project.candidates.length*100);await save();
@@ -169,7 +169,8 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
           }
         }
         const clipDuration=timelineDuration(settings);
-        if(projectAd&&!adEdited&&(projectAd.duration>clipDuration||projectAd.start+projectAd.duration>clipDuration)) {
+        if(projectAd&&!adEdited&&projectAd.position==='insert'&&projectAd.start>=clipDuration)projectAd={...projectAd,start:clipDuration/2};
+        else if(projectAd&&!adEdited&&projectAd.position!=='insert'&&(projectAd.duration>clipDuration||projectAd.start+projectAd.duration>clipDuration)) {
           const duration=Math.min(projectAd.duration,clipDuration);
           projectAd={...projectAd,start:(clipDuration-duration)/2,duration};
         }
@@ -182,7 +183,7 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
         if(job.type==='export'){
           project.exports||=project.finalFile?[{id:project.finalFile}]:[];
           project.finalFile=versionId;project.status='COMPLETED';
-          project.exports.push({id:versionId,jobId:job.id,createdAt:new Date().toISOString(),format:settings.format,duration:timelineDuration(settings)});
+          project.exports.push({id:versionId,jobId:job.id,createdAt:new Date().toISOString(),format:settings.format,duration:adTotalDuration(ad,timelineDuration(settings))});
         }
         else if(job.payload.adPreview){project.adPreview=versionId;project.adPreviewJobId=job.id;project.status='ADDING_AD';}
         else {project.versions.push({id:versionId,jobId:job.id,number:project.versions.length+1,settings,ad:projectAd?structuredClone(projectAd):null,createdAt:new Date().toISOString(),request:job.payload.request||''});project.currentVersion=versionId;project.adPreview=null;project.status='AWAITING_APPROVAL';}

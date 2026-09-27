@@ -191,7 +191,7 @@ export async function createVideoApi({ dataDir, env = process.env }) {
       if (method === 'PUT' && action === 'advertisement') {
         if (!project.ad || !['APPROVED','ADDING_AD','COMPLETED'].includes(project.status)) throw fail('Подтвердите ролик и загрузите рекламу.',409);
         const body=await json(request), duration=timelineDuration(project.settings);
-        const options=normalizeAd(Object.fromEntries(['position','width','start','duration','opacity'].map(key=>[key,body[key]])),duration);
+        const options=normalizeAd(Object.fromEntries(['position','width','height','fill','start','duration','opacity'].map(key=>[key,body[key]]).filter(([,value])=>value!==undefined)),duration);
         project.ad={...project.ad,...options}; project.adPreview=null; project.status='ADDING_AD'; await store.saveProject(ownerId,project); send(response,{project:projectView(project)}); return true;
       }
       throw fail('Неизвестный запрос.',404);

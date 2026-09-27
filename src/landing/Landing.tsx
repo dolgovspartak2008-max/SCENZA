@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowRight, Play, Menu, X, Plus, ScanLine, Captions, RectangleVertical, Download, Film, ArrowUpRight, Maximize, UserRound } from 'lucide-react';
+import { ArrowRight, Play, Menu, X, Plus, ScanLine, Captions, RectangleVertical, Download, Film, ArrowUpRight, Maximize } from 'lucide-react';
 import { Logo } from '../Icon';
 import { ShinyButton as Button } from '@/components/ui/shiny-button';
 import { PageLoader } from '@/components/ui/page-loader';
@@ -12,11 +12,13 @@ import { ProductDemo } from './ProductDemo';
 import { SplineScene } from '@/components/ui/splite';
 import { Spotlight } from '@/components/ui/spotlight';
 import { parseSelection } from './plans';
-import type { BillingPeriod, Language, PlanId, PlanSelection } from './plans';
+import { demoPlans } from './plans';
+import type { Language, PlanId, PlanSelection } from './plans';
 import { AuthModal } from './AuthModal';
 import { authRequest } from './auth';
 import type { Account } from './auth';
 import { LegalLinks } from './LegalLinks';
+import { ProfileMenu } from './ProfileMenu';
 import './landing.css';
 
 const PricingSection = lazy(() => import('@/components/ui/pricing').then((module) => ({ default: module.PricingSection })));
@@ -61,7 +63,6 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
   const [language, setLanguage] = useState<Language>(readLanguage);
   const copy = content[language];
   const [selection, setSelection] = useState<PlanSelection | null>(readPlan);
-  const [period, setPeriod] = useState<BillingPeriod>(() => readPlan()?.period ?? 'month');
   const [menuOpen, setMenuOpen] = useState(false);
   const [robotSettled, setRobotSettled] = useState(requestAccess);
   const finishLoading = useCallback(() => setRobotSettled(true), []);
@@ -70,6 +71,7 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
   const [authMode, setAuthMode] = useState<'login' | 'register'>(requestAccess ? 'login' : 'register');
   const [videoIndex, setVideoIndex] = useState<number | null>(null);
   const [demoNotice, setDemoNotice] = useState(false);
+  const [planNotice, setPlanNotice] = useState<PlanId | null>(null);
   const menuButton = useRef<HTMLButtonElement>(null);
   const authFocus = useRef<HTMLElement | null>(null);
   const pricingRef = useRef<HTMLElement>(null);
@@ -103,14 +105,9 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
   }, [authOpen]);
 
   function updatePlan(plan: PlanSelection) {
-    const normalized = { ...plan, period: plan.planId === 'trial' ? 'month' as const : plan.period };
+    const normalized = { ...plan, period: 'month' as const };
     setSelection(normalized);
-    if (normalized.planId !== 'trial') setPeriod(normalized.period);
     try { localStorage.setItem('scenza.selected-plan', JSON.stringify(normalized)); } catch { /* Selection is retained in this tab. */ }
-  }
-  function changePeriod(next: BillingPeriod) {
-    setPeriod(next);
-    if (selection && selection.planId !== 'trial') updatePlan({ ...selection, period: next });
   }
   function openAuth(mode: 'login' | 'register', plan?: PlanSelection) {
     if (account?.accessActive && mode === 'register') { location.assign('/app'); return; }
@@ -119,12 +116,12 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
     if (plan) updatePlan(plan);
     else if (mode === 'register' && !selection) updatePlan({ planId: 'trial', period: 'month' });
   }
-  function choosePlan(planId: PlanId, nextPeriod: BillingPeriod) { openAuth('register', { planId, period: nextPeriod }); }
+  // Payments are not connected: a signed-in visitor cannot activate a paid plan without the administrator.
+  function choosePlan(planId: PlanId) { if (account && planId !== 'trial') { updatePlan({ planId, period: 'month' }); setPlanNotice(planId); return; } openAuth('register', { planId, period: 'month' }); }
   const links = [{ id: 'demo', label: copy.nav.features }, { id: 'workflow', label: copy.nav.how }, { id: 'pricing', label: copy.nav.pricing }, { id: 'faq', label: copy.nav.faq }];
   const languageControl = <div className="scenza-language" role="group" aria-label={copy.languageLabel}><button onClick={() => setLanguage('ru')} aria-pressed={language === 'ru'} lang="ru">RU</button><button onClick={() => setLanguage('en')} aria-pressed={language === 'en'} lang="en">EN</button></div>;
 
-  const accountLabel = account?.name || account?.email;
-  const accountButton = <Button variant="outline" size="sm" className={account ? 'scenza-account-button' : undefined} title={accountLabel} onClick={() => openAuth('login')}>{account ? <><UserRound size={17} /><span>{accountLabel}</span></> : copy.login}</Button>;
+  const accountButton = account ? <ProfileMenu account={account} language={language} onAccountChange={setAccount} onPricing={() => { setMenuOpen(false); document.getElementById('pricing')?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); }} /> : <Button variant="outline" size="sm" onClick={() => openAuth('login')}>{copy.login}</Button>;
   return <div className="scenza-landing" inert={!robotSettled}>
     <ParticleBackground />
     <PageLoader open={!robotSettled} onContinue={finishLoading} language={language} />
@@ -152,7 +149,7 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
         <div className="scenza-workflow-value"><h3>{copy.automation.valueTitle}</h3><div><p>{copy.automation.value}</p><p className="scenza-workflow-note">{copy.automation.note}</p></div></div>
       </section>
 
-      <section id="pricing" tabIndex={-1} data-section-label={copy.nav.pricing} ref={pricingRef} className="scenza-container scenza-pricing-section"><div className="scenza-section-title"><div><h2>{copy.pricingTitle}</h2><p>{copy.pricingDescription}</p></div></div>{pricingVisible ? <Suspense fallback={<div className="scenza-pricing-placeholder" aria-label={copy.nav.pricing} />}><PricingSection language={language} copy={copy.pricing} period={period} selectedPlan={selection?.planId ?? null} onPick={(planId, period) => updatePlan({ planId, period })} onPeriodChange={changePeriod} onSelect={choosePlan} /></Suspense> : <div className="scenza-pricing-placeholder" />}</section>
+      <section id="pricing" tabIndex={-1} data-section-label={copy.nav.pricing} ref={pricingRef} className="scenza-container scenza-pricing-section"><div className="scenza-section-title"><div><h2>{copy.pricingTitle}</h2><p>{copy.pricingDescription}</p></div></div>{pricingVisible ? <Suspense fallback={<div className="scenza-pricing-placeholder" aria-label={copy.nav.pricing} />}><PricingSection language={language} copy={copy.pricing} selectedPlan={selection?.planId ?? null} onPick={planId => updatePlan({ planId, period: 'month' })} onSelect={choosePlan} /></Suspense> : <div className="scenza-pricing-placeholder" />}</section>
 
       <section id="faq" tabIndex={-1} data-section-label={copy.nav.faq} className="scenza-container scenza-faq"><div className="scenza-section-title"><div><h2>{copy.faqTitle}</h2><p>{copy.faqDescription}</p></div></div><div className="scenza-faq-grid">{[0, 1].map((column) => <div className="scenza-faq-column" key={column}>{copy.faq.filter((_, index) => index % 2 === column).map((item) => <details key={item.question} name="scenza-faq"><summary><span>{item.question}</span><Plus size={18} aria-hidden="true" /></summary><p>{item.answer}</p></details>)}</div>)}</div></section>
     </main>
@@ -161,5 +158,6 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
     <AuthModal account={account} onAccountChange={setAccount} open={authOpen} mode={authMode} setMode={setAuthMode} close={() => setAuthOpen(false)} copy={copy} selection={selection} onPlanChange={updatePlan} restoreFocus={authFocus.current} onDemo={() => { setAuthOpen(false); requestAnimationFrame(() => document.getElementById('demo')?.scrollIntoView()); }} />
     <Dialog open={videoIndex !== null} onClose={() => setVideoIndex(null)} title={videoIndex === null ? copy.examples.watch : copy.examples.names[videoIndex]} closeLabel={copy.close} className="scenza-video-dialog">{videoIndex !== null && <><span className="scenza-demo-badge">{copy.examples.badge}</span><h2>{copy.examples.names[videoIndex]}</h2><video controls autoPlay playsInline preload="metadata" poster={`/videos/${examples[videoIndex].id}.jpg`} src={`/videos/${examples[videoIndex].id}.mp4`} aria-label={copy.examples.names[videoIndex]} /><p>{copy.examples.types[videoIndex]}</p></>}</Dialog>
     <Dialog open={demoNotice} onClose={() => setDemoNotice(false)} title={copy.demoNotice.title} closeLabel={copy.close}><div className="scenza-information"><Film size={29} /><h2>{copy.demoNotice.title}</h2><p>{copy.demoNotice.text}</p><Button onClick={() => setDemoNotice(false)}>{copy.demoNotice.button}</Button></div></Dialog>
+    <Dialog open={planNotice !== null} onClose={() => setPlanNotice(null)} title={planNotice ? copy.pricing.plans[planNotice].name : copy.nav.pricing} closeLabel={copy.close}>{planNotice && <div className="scenza-information"><Film size={29} /><h2>{language === 'ru' ? `Тариф «${copy.pricing.plans[planNotice].name}»` : `${copy.pricing.plans[planNotice].name} plan`}</h2><p>{language === 'ru' ? `Онлайн-оплата пока не подключена. Напишите нам в Telegram: администратор подключит тариф (${demoPlans.find(plan => plan.id === planNotice)?.tokens} токенов) после оплаты. Без подтверждения администратора тариф не активируется.` : `Online payment is not connected yet. Message us on Telegram and the administrator will activate the plan (${demoPlans.find(plan => plan.id === planNotice)?.tokens} tokens) after payment. A plan is never activated without the administrator.`}</p><Button asChild><a href="https://t.me/SCENZA_BOT" target="_blank" rel="noopener noreferrer">{language === 'ru' ? 'Написать в Telegram' : 'Message us on Telegram'}</a></Button></div>}</Dialog>
   </div>;
 }

@@ -1,18 +1,18 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { demoPlans, monthlyEquivalent, annualDiscount, parseSelection } from '../src/landing/plans.ts';
+import { demoPlans, planPrice, tokenDiscount, tokenPrice, parseSelection } from '../src/landing/plans.ts';
 import { authAdapter, authRequest, validateAuth } from '../src/landing/auth.ts';
 
-test('annual numbers distinguish monthly equivalent and full payment; trial stays unchanged', () => {
-  for (const plan of demoPlans) {
-    assert.equal(monthlyEquivalent(plan, 'month'), plan.monthly);
-    assert.equal(monthlyEquivalent(plan, 'year') * 12, plan.annual);
-    assert.equal(annualDiscount(plan), plan.id === 'trial' ? 0 : 20);
-  }
+test('token plans price one minute of source video and reward bigger packs', () => {
+  const byId = Object.fromEntries(demoPlans.map(plan => [plan.id, plan]));
+  assert.deepEqual(demoPlans.map(plan => [plan.id, plan.tokens, planPrice(plan, 'ru'), planPrice(plan, 'en')]), [['trial', 0, 0, 0], ['start', 75, 1500, 18], ['pro', 170, 3000, 36], ['business', 500, 7560, 90]]);
+  assert.equal(tokenPrice(byId.start, 'ru'), 20);
+  assert.deepEqual(demoPlans.map(tokenDiscount), [0, 0, 12, 24]);
+  assert.ok(tokenPrice(byId.business, 'ru') < tokenPrice(byId.pro, 'ru') && tokenPrice(byId.pro, 'ru') < tokenPrice(byId.start, 'ru'));
 });
 test('plan restore validates both plan and interval', () => {
-  assert.deepEqual(parseSelection('{"planId":"pro","period":"year"}'), { planId: 'pro', period: 'year' });
-  for (const value of ['broken', 'null', '{"planId":"admin","period":"year"}', '{"planId":"pro","period":"forever"}']) assert.equal(parseSelection(value), null);
+  assert.deepEqual(parseSelection('{"planId":"business","period":"year"}'), { planId: 'business', period: 'month' });
+  for (const value of ['broken', 'null', '{"planId":"admin","period":"month"}']) assert.equal(parseSelection(value), null);
 });
 test('auth validates input and sends credentials only to the server', async (t) => {
   assert.deepEqual(validateAuth({ email: 'invalid', password: 'short' }), { email: 'invalidEmail', password: 'shortPassword' });

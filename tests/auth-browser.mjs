@@ -59,8 +59,7 @@ try {
   assert.equal(await registration.locator('input[type=checkbox]:checked').count(), 0);
   await registration.locator('summary').click();
   await registration.getByRole('radio').last().check();
-  assert.match(await registration.locator('summary').innerText(), /Pro/);
-  await registration.locator('select').selectOption('year');
+  assert.match(await registration.locator('summary').innerText(), /Бизнес/);
   await page.setViewportSize({ width: 390, height: 900 });
   assert.equal(await registration.evaluate(element => element.scrollWidth <= element.clientWidth + 1), true);
   await page.screenshot({ path: path.join(screenshots, 'register-mobile.png') });

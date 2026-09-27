@@ -14,11 +14,11 @@ body:has(.scenza-page-loader) { overflow: hidden; }
 .scenza-page-loader-timeline { display: flex; gap: 5px; height: 12px; margin-top: 16px; }
 .scenza-page-loader-timeline span { flex: 1; border-radius: 2px; background: #204b49; }
 .scenza-page-loader-timeline span:nth-child(3n) { flex: 1.6; background: #326b61; }
-.scenza-page-loader-playhead { position: absolute; top: 4px; bottom: 8px; left: 0; width: 100%; border-left: 1px solid #72d7c6; opacity: .85; transform: translateX(calc(var(--scenza-loader-progress, 0) * (100% - 2px))); will-change: transform; pointer-events: none; }
+.scenza-page-loader-playhead { position: absolute; top: 4px; bottom: 8px; left: 0; width: calc(100% - 2px); border-left: 1px solid #72d7c6; opacity: .85; transform: translateX(0); will-change: transform; pointer-events: none; }
 .scenza-page-loader-playhead::before { content: ''; position: absolute; top: 0; left: -3px; width: 5px; height: 5px; border-radius: 50%; background: #72d7c6; }
-/* The bar is driven by --scenza-loader-progress (0–1) from page-loader.tsx and always reaches 1 before the overlay fades. */
+/* page-loader.tsx animates these transforms and always runs them to the end before the overlay fades. */
 .scenza-page-loader-timeline { position: relative; }
-.scenza-page-loader-fill { position: absolute; inset: 0; border-radius: 2px; background: linear-gradient(90deg, rgba(69, 240, 214, .25), rgba(114, 215, 198, .7)); transform: scaleX(var(--scenza-loader-progress, 0)); transform-origin: left center; will-change: transform; pointer-events: none; }
+.scenza-page-loader-fill { position: absolute; inset: 0; border-radius: 2px; background: linear-gradient(90deg, rgba(69, 240, 214, .25), rgba(114, 215, 198, .7)); transform: scaleX(0); transform-origin: left center; will-change: transform; pointer-events: none; }
 .scenza-page-loader-brand { font-size: clamp(30px, 7vw, 42px); font-weight: 800; letter-spacing: .14em; text-indent: .14em; line-height: 1.2; }
 .scenza-page-loader-content p { margin: 14px 0 0; color: #a4b8bf; font-size: 13px; line-height: 1.6; }
 @keyframes scenza-page-loader-frame { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
