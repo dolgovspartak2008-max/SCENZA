@@ -74,6 +74,7 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
   const [demoNotice, setDemoNotice] = useState(false);
   const [planNotice, setPlanNotice] = useState<PlanId | null>(null);
   const [inviteCopied, setInviteCopied] = useState(false);
+  const [faqOpen, setFaqOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
   const authFocus = useRef<HTMLElement | null>(null);
   const pricingRef = useRef<HTMLElement>(null);
@@ -164,7 +165,7 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
 
       <section id="pricing" tabIndex={-1} data-section-label={copy.nav.pricing} ref={pricingRef} className="scenza-container scenza-pricing-section"><div className="scenza-section-title"><div><h2>{copy.pricingTitle}</h2><p>{copy.pricingDescription}</p></div></div>{pricingVisible ? <Suspense fallback={<div className="scenza-pricing-placeholder" aria-label={copy.nav.pricing} />}><PricingSection language={language} copy={copy.pricing} selectedPlan={selection?.planId ?? null} onPick={planId => updatePlan({ planId, period: 'month' })} onSelect={choosePlan} /></Suspense> : <div className="scenza-pricing-placeholder" />}</section>
 
-      <section id="faq" tabIndex={-1} data-section-label={copy.nav.faq} className="scenza-container scenza-faq"><div className="scenza-section-title"><div><h2>{copy.faqTitle}</h2><p>{copy.faqDescription}</p></div></div><div className="scenza-faq-grid">{[0, 1].map((column) => <div className="scenza-faq-column" key={column}>{copy.faq.filter((_, index) => index % 2 === column).map((item) => <details key={item.question} name="scenza-faq"><summary><span>{item.question}</span><Plus size={18} aria-hidden="true" /></summary><p>{item.answer}</p></details>)}</div>)}</div></section>
+      <section id="faq" tabIndex={-1} data-section-label={copy.nav.faq} className="scenza-container scenza-faq"><div className="scenza-section-title"><div><h2>{copy.faqTitle}</h2><p>{copy.faqDescription}</p></div><Button variant="outline" aria-expanded={faqOpen} aria-controls="scenza-faq-list" onClick={() => setFaqOpen(!faqOpen)}>{faqOpen ? (language === 'ru' ? 'Скрыть вопросы' : 'Hide questions') : (language === 'ru' ? `Показать вопросы (${copy.faq.length})` : `Show questions (${copy.faq.length})`)}<Plus size={17} className="scenza-faq-toggle" data-open={faqOpen} aria-hidden="true" /></Button></div><div id="scenza-faq-list" className="scenza-faq-grid" hidden={!faqOpen}>{[0, 1].map((column) => <div className="scenza-faq-column" key={column}>{copy.faq.filter((_, index) => index % 2 === column).map((item) => <details key={item.question} name="scenza-faq"><summary><span>{item.question}</span><Plus size={18} aria-hidden="true" /></summary><p>{item.answer}</p></details>)}</div>)}</div></section>
     </main>
     <footer className="scenza-footer"><div className="scenza-container scenza-legal-footer"><LegalLinks language={language} /><p>Самозанятый Долгов Спартак Сергеевич · ИНН 026617773364<br /><a href="mailto:artemnikov200777@gmail.com">artemnikov200777@gmail.com</a></p></div></footer>
 

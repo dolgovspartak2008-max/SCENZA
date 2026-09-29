@@ -38,6 +38,17 @@ export async function createAdminService({ auth, dataDir, getVideoApi, now = Dat
   const owner = async actor => { if (await auth.bots.adminRole(actor) !== 'owner') throw fail('Доступ только для владельца.', 403); };
   const accounts = actor => auth.bots.adminSnapshot(actor);
   const video = async () => (await getVideoApi()).store.adminSnapshot();
+  // The alert names the actual failure so the owner knows whether to wake the database, apply the migration or fix the key.
+  const databaseReason = error => {
+    const code = error?.code || '';
+    if (code === 'VIDEO_DATABASE_UNAVAILABLE') return 'нет связи с Supabase. Проверьте, не приостановлен ли проект в панели Supabase (бесплатные проекты засыпают без активности), и доступ сервера в интернет.';
+    if (code === 'VIDEO_TABLE_MISSING') return 'в Supabase нет таблиц видеозадач. Примените server/ai/migration.sql в SQL Editor.';
+    if (/^VIDEO_HTTP_(401|403)$/.test(code)) return 'Supabase отклонил ключ (HTTP 401/403). Проверьте SUPABASE_SECRET_KEY на сервере.';
+    if (/^VIDEO_HTTP_5\d\d$/.test(code)) return `Supabase вернул ошибку сервера (${code.slice(11)}). Проверьте статус проекта в панели Supabase.`;
+    if (code.startsWith('VIDEO_HTTP_')) return `запрос к базе отклонён (HTTP ${code.slice(11)}${error.providerCode ? `, ${error.providerCode}` : ''}). Проверьте применённую миграцию server/ai/migration.sql.`;
+    if (/sqlite|database is locked|SQLITE/i.test(error?.message || '')) return 'локальная база SQLite занята или повреждена. Перезапустите сервис.';
+    return 'сервис видео не запустился. Проверьте журнал сервера (journalctl -u scenza).';
+  };
   const timestamp = () => new Date(now()).toISOString();
   let keyCache, keyRequest;
   async function currentKey() {
@@ -193,7 +204,7 @@ export async function createAdminService({ auth, dataDir, getVideoApi, now = Dat
         }
         const recent = data.usage.filter(row => row.error && Date.parse(row.createdAt) > now() - 15 * 60000);
         for (const code of new Set(recent.map(row => row.error))) if (/NETWORK|PROVIDER|RATE_LIMIT|UNKNOWN|PAYMENT_REQUIRED/.test(code)) alerts.push({ key: `ai:${code}`, text: `SCENZA: сбой AI API (${code}). Проверьте раздел AI / расходы и баланс в кабинете API.` });
-      } catch { alerts.push({ key: 'database:unavailable', text: 'SCENZA: база видеозадач недоступна. Проверьте подключение к БД и применённую миграцию.' }); }
+      } catch (error) { alerts.push({ key: `database:unavailable:${error?.code || 'unknown'}`, text: `SCENZA: база видеозадач недоступна.\nПричина: ${databaseReason(error)}` }); }
       return alerts;
     },
     async journal(actor, { userId, limit = 20, errorsOnly = false } = {}) {

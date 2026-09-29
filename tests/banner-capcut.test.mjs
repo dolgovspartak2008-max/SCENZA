@@ -75,7 +75,13 @@ test('banner is editable during review and the CapCut pack contains a clean clip
   assert.deepEqual([clip.width, clip.height], [1080, 1920]); assert.ok(Math.abs(clip.duration - 6) < .2, 'the clean clip has no banner pause');
   assert.match(await readFile(path.join(unpacked, '2-subtitles.srt'), 'utf8'), /00:00:01,000 --> 00:00:03,000\nПривет, мир/);
   assert.ok((await readFile(path.join(unpacked, '3-banner.png'))).length > 0);
-  assert.match(await readFile(path.join(unpacked, 'CapCut - instrukciya.txt'), 'utf8'), /2 сек/);
+  assert.match(await readFile(path.join(unpacked, 'CapCut - instrukciya.txt'), 'utf8'), /2 сек[\s\S]*Premiere Pro/);
+  // The editing timeline must be well-formed XML that pauses the clip for the banner, relinked by file name.
+  const xml = await readFile(path.join(unpacked, '5-premiere-davinci.xml'), 'utf8');
+  execFileSync('python3', ['-c', 'import sys,xml.dom.minidom as m;m.parse(sys.argv[1])', path.join(unpacked, '5-premiere-davinci.xml')]);
+  assert.match(xml, /<pathurl>1-video\.mp4<\/pathurl>/);
+  assert.match(xml, /<clipitem id="banner-1"><name>3-banner\.png<\/name>/);
+  assert.equal((xml.match(/<clipitem id="clip-/g) || []).length, 2, 'clip is split around the banner');
 
   project = (await request(`${route}/advertisement`, 'DELETE')).project;
   assert.equal(project.ad, null);

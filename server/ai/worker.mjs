@@ -9,7 +9,7 @@ import { OpenRouterProvider, PRIMARY_VIDEO_MODEL, FAST_EDIT_MODEL, ANALYSIS_VERS
 import { analyzeLongVideo } from './analysis.mjs';
 import { ff, run, inspect, normalizeSettings, normalizeAd, applyAdPatch, timelineDuration, adTotalDuration, render, fail } from './render.mjs';
 import { createTokens } from './tokens.mjs';
-import { exportSrt } from './project-export.mjs';
+import { exportSrt, packXml } from './project-export.mjs';
 import { writeZip } from './zip.mjs';
 
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
@@ -24,7 +24,8 @@ export function capcutGuide({ settings, ad, subtitles, music }) {
     : `Баннер: добавьте файл баннера как «Наложение» с ${seconds(ad.position === 'final' ? Math.max(0, timelineDuration(settings) - ad.duration) : ad.start)} на ${seconds(ad.duration)} и настройте масштаб и положение.`);
   if (music) steps.push('Музыка: добавьте файл 4-music на аудиодорожку и уменьшите громкость под речь.');
   steps.push('Экспорт: нажмите «Экспорт» в CapCut и выберите 1080p.');
-  return ['SCENZA → CapCut', '', ...steps.map((step, index) => `${index + 1}. ${step}`)].join('\r\n') + '\r\n';
+  const other = ['Распакуйте архив в одну папку, чтобы файлы лежали рядом.', 'Premiere Pro: Файл → Импорт → 5-premiere-davinci.xml. Появится последовательность с роликом и баннером на своих местах. Если Premiere спросит про файлы, укажите 1-video.mp4 и файл баннера из этой папки.', 'DaVinci Resolve: File → Import → Timeline → 5-premiere-davinci.xml, затем укажите эту папку как место с медиафайлами.', 'Субтитры 2-subtitles.srt в Premiere: Файл → Импорт, затем перетащите на дорожку субтитров; в DaVinci — перетащите SRT на таймлайн.'];
+  return ['SCENZA → CapCut', '', ...steps.map((step, index) => `${index + 1}. ${step}`), '', 'SCENZA → Premiere Pro и DaVinci Resolve', '', ...other.map((step, index) => `${index + 1}. ${step}`)].join('\r\n') + '\r\n';
 }
 const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || path.join(workspace,'.scena'), env = process.env, provider, python } = {}) {
@@ -184,6 +185,8 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
         if(banner)entries.push({name:`3-banner${path.extname(banner)}`,file:banner});
         const music=settings.musicId&&project.files[settings.musicId]?await get(settings.musicId):null;
         if(music)entries.push({name:`4-music${path.extname(music)}`,file:music});
+        const bannerName=banner?`3-banner${path.extname(banner)}`:null;
+        entries.push({name:'5-premiere-davinci.xml',data:packXml({project,settings,duration:timelineDuration(settings),ad:banner?project.ad:null,banner:banner?{name:bannerName,still:project.ad.kind!=='video'}:null})});
         entries.push({name:'CapCut - instrukciya.txt',data:capcutGuide({settings,ad:banner?project.ad:null,subtitles:!!srt.trim(),music:!!music})});
         const archive=path.join(folder,`${packId}.zip`);await writeZip(archive,entries);
         await put(packId,archive,'application/zip',true,`project-${Number(job.payload.number)||1}-capcut.zip`);

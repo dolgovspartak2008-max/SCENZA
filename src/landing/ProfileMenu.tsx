@@ -12,7 +12,7 @@ type Project = { id: string; title: string; status: string; createdAt: string };
 
 const reasons: Record<string, [string, string]> = {
   trial: ['Стартовые токены', 'Welcome tokens'], purchase: ['Тариф', 'Plan'], grant: ['Начисление', 'Grant'], referral: ['Реферальный бонус', 'Referral bonus'],
-  promo: ['Промокод', 'Promo code'], analysis: ['Анализ видео', 'Video analysis'], refund: ['Возврат', 'Refund'],
+  promo: ['Промокод', 'Promo code'], analysis: ['Анализ видео', 'Video analysis'], refund: ['Возврат', 'Refund'], bonus: ['Бонус за публикацию', 'Publication bonus'],
 };
 
 function remaining(end: string | null | undefined, en: boolean) {

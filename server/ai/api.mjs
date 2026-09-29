@@ -9,7 +9,6 @@ import { fail, normalizeSettings, normalizeAd, timelineDuration } from './render
 const AD_FIELDS = ['position','width','height','fill','fit','start','duration','opacity','offsetX','offsetY','fade','background','backgroundColor'];
 import { PRIMARY_VIDEO_MODEL, ANALYSIS_VERSION } from './openai.mjs';
 import { createTokens, LOCAL_OWNER } from './tokens.mjs';
-import { projectExports } from './project-export.mjs';
 
 const MAX_FILE = 20 * 1024 ** 3, CHUNK = 8 * 1024 ** 2;
 const projectView = ({analysis,analysisWindows,analysisResult,analysisCache,sourceFingerprint,editCache,adPreviewJobId,...project}) => project;
@@ -113,7 +112,11 @@ export async function createVideoApi({ dataDir, env = process.env }) {
       if (route === '/api/video/usage' && method === 'GET') {
         const { month, sourceMinutes, sourceCount, editRequests } = await store.ownerMonthlyUsage(ownerId);
         const ledger = ownerId === LOCAL_OWNER ? null : await tokens.summary(ownerId);
-        send(response, { month, sourceMinutes, sourceCount, editRequests, ...(ledger ? { tokens: ledger.balance, tokenHistory: ledger.history } : {}) }); return true;
+        send(response, { month, sourceMinutes, sourceCount, editRequests, ...(ledger ? { tokens: ledger.balance, tokenHistory: ledger.history, publicationBonus: ledger.publicationBonus } : {}) }); return true;
+      }
+      if (route === '/api/video/bonus/publication' && method === 'POST') {
+        if (!(await store.listProjects(ownerId)).some(project => readyClips(project).length)) throw fail('Сначала подготовьте и опубликуйте ролик из SCENZA.', 409);
+        send(response, await tokens.publicationBonus(ownerId, (await json(request)).url)); return true;
       }
       if (route === '/api/video/config' && method === 'GET') { send(response, { aiReady: !!env.OPENROUTER_API_KEY?.trim(), maxFileSize: MAX_FILE, chunkSize: CHUNK }); return true; }
       if (route === '/api/video/projects' && method === 'GET') { const projects = await store.listProjects(ownerId), numbers = projectNumbers(projects); send(response, { projects: projects.map(project => ({ ...projectView(project), title: projectTitle(numbers.get(project.id) || 1) })) }); return true; }
@@ -144,13 +147,6 @@ export async function createVideoApi({ dataDir, env = process.env }) {
       const [,id,action,fileId] = match, project = await store.getProject(ownerId,id);
       if (!project) throw fail('Проект не найден.',404);
       if (method === 'GET' && !action) { send(response,{project:await view(ownerId,project)}); return true; }
-      if (method === 'GET' && action === 'project-export') {
-        const format = projectExports[url.searchParams.get('format')], candidate = project.candidates.find(item => item.id === url.searchParams.get('candidate'));
-        const settings = candidate?.settings || project.settings || project.candidates.find(item => item.ready)?.settings;
-        if (!format || !settings) throw fail('Экспорт проекта станет доступен после подготовки роликов.', 409);
-        response.writeHead(200, { 'Content-Type': format.mime, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Content-Disposition': `attachment; filename="project-${await numberOf(ownerId, project)}.${format.extension}"` });
-        response.end(format.build({ ...project, title: projectTitle(await numberOf(ownerId, project)) }, settings)); return true;
-      }
       if (['GET','HEAD'].includes(method) && action === 'files') {
         const entry = project.files[fileId]; if (!entry) throw fail('Файл не найден.',404);
         await serveFile(request,response,entry); return true;

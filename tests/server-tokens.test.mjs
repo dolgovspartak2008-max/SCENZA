@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { createStore } from '../server/ai/store.mjs';
-import { createTokens, tokenCost, TRIAL_TOKENS } from '../server/ai/tokens.mjs';
-import { exportEdl, exportSrt, exportXml, frameRate } from '../server/ai/project-export.mjs';
+import { createTokens, publicationUrl, tokenCost, TRIAL_TOKENS } from '../server/ai/tokens.mjs';
+import { exportSrt, frameRate, packXml } from '../server/ai/project-export.mjs';
 
 test('token ledger starts with trial tokens, charges each source once and refuses an empty balance', async t => {
   await mkdir('tmp', { recursive: true });
@@ -27,23 +27,25 @@ test('token ledger starts with trial tokens, charges each source once and refuse
   assert.equal((await store.ownerMonthlyUsage(owner)).calls, 0, 'ledger entries are not counted as AI calls');
   assert.deepEqual(await tokens.charge('local', 'project-3', 'source-c', 3600), { charged: 0 }, 'the local studio is free');
   await assert.rejects(tokens.grant(owner, 1.5, 'purchase', 'bad'), /Invalid token entry/);
+  assert.equal(publicationUrl('http://tiktok.com/@a/video/1'), null, 'only https');
+  assert.equal(publicationUrl('https://evil.example/tiktok.com'), null);
+  assert.equal(publicationUrl('https://vm.tiktok.com/ZM123/'), 'https://vm.tiktok.com/ZM123/');
+  await assert.rejects(tokens.publicationBonus(owner, 'https://example.com/video'), error => error.status === 400);
+  assert.deepEqual(await tokens.publicationBonus(owner, 'https://www.youtube.com/shorts/abc123'), { balance: 179 });
+  await assert.rejects(tokens.publicationBonus(owner, 'https://www.instagram.com/reel/xyz/'), error => error.status === 409, 'the bonus is granted once');
+  assert.equal((await tokens.summary(owner)).publicationBonus, true);
 });
 
-test('project exports keep the edit decision list for Premiere, DaVinci and CapCut', () => {
-  const project = { id: 'p', title: 'Интервью & <live>', upload: { name: 'source video.mp4' }, fps: '30000/1001', width: 1920, height: 1080, duration: 120, hasAudio: true,
-    analysis: { segments: [{ start: 9, end: 12, text: 'Первый ответ' }, { start: 40, end: 43, text: 'Второй' }, { start: 70, end: 72, text: 'Вне ролика' }] } };
+test('project captions follow the cut timeline', () => {
+  const project = { fps: '30000/1001', analysis: { segments: [{ start: 9, end: 12, text: 'Первый ответ' }, { start: 40, end: 43, text: 'Второй' }, { start: 70, end: 72, text: 'Вне ролика' }] } };
   const settings = { format: '9:16', segments: [{ start: 10, end: 20 }, { start: 40, end: 45 }] };
   assert.deepEqual(frameRate(project), { rate: 30000 / 1001, timebase: 30, ntsc: true });
-  const edl = exportEdl(project, settings);
-  assert.match(edl, /^TITLE: Интервью/);
-  assert.match(edl, /001 {2}AX {7}B {5}C {8}00:00:10:00 00:00:20:00 00:00:00:00 00:00:10:00/);
-  assert.match(edl, /002 {2}AX {7}B {5}C {8}00:00:40:00 00:00:45:00 00:00:10:00 00:00:15:00/);
-  const xml = exportXml(project, settings);
-  assert.match(xml, /<xmeml version="5">/);
-  assert.match(xml, /Интервью &amp; &lt;live&gt;/);
-  assert.equal((xml.match(/<clipitem id="video-/g) || []).length, 2);
-  assert.match(xml, /<in>300<\/in><out>600<\/out>/);
-  assert.match(xml, /<width>1080<\/width><height>1920<\/height>/);
-  const srt = exportSrt(project, settings);
-  assert.equal(srt, '1\n00:00:00,000 --> 00:00:02,000\nПервый ответ\n\n2\n00:00:10,000 --> 00:00:13,000\nВторой\n');
+  assert.equal(exportSrt(project, settings), '1\n00:00:00,000 --> 00:00:02,000\nПервый ответ\n\n2\n00:00:10,000 --> 00:00:13,000\nВторой\n');
+});
+
+test('editing pack timeline keeps an overlay banner on its own track', () => {
+  const xml = packXml({ project: { title: 'Pack', fps: '25/1', hasAudio: true }, settings: { format: '1:1' }, duration: 10, ad: { position: 'final', start: 0, duration: 2 }, banner: { name: '3-banner.mp4', still: false } });
+  assert.equal((xml.match(/<track>/g) || []).length, 3, 'video, banner overlay and audio tracks');
+  assert.match(xml, /<clipitem id="banner-1"><name>3-banner.mp4<\/name><duration>50<\/duration><rate><timebase>25<\/timebase><ntsc>FALSE<\/ntsc><\/rate><start>200<\/start><end>250<\/end>/);
+  assert.match(xml, /<width>1080<\/width><height>1080<\/height>/);
 });

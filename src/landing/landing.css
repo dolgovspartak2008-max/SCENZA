@@ -17,10 +17,10 @@
 .scenza-desktop-nav a { white-space: nowrap; padding-block: 16px; }
 .scenza-desktop-nav a:hover, .scenza-footer nav a:hover { color: var(--accent); }
 .scenza-header-actions { display: flex; gap: 10px; align-items: center; }
-.scenza-language { display: inline-flex; align-items: center; gap: 3px; padding: 3px; border: 1px solid #183238; border-radius: 5px; }
-.scenza-language button { min-width: 33px; min-height: 31px; font-size: .68rem; font-weight: 700; padding: 7px; border-radius: 3px; color: #a4b5bb; }
+.scenza-language { display: inline-flex; align-items: center; gap: 3px; padding: 3px; border: 1px solid #183238; border-radius: 999px; }
+.scenza-language button { min-width: 33px; min-height: 31px; font-size: .68rem; font-weight: 700; padding: 7px; border-radius: 999px; color: #a4b5bb; }
 .scenza-language button[aria-pressed=true] { color: var(--accent); background: #0d2b2a; }
-.scenza-button { display: inline-flex; justify-content: center; align-items: center; gap: 10px; min-height: 44px; padding: 11px 21px; border-radius: 5px; border: 1px solid transparent; font: 650 .85rem/1.3 Manrope, 'Segoe UI', sans-serif; cursor: pointer; }
+.scenza-button { display: inline-flex; justify-content: center; align-items: center; gap: 10px; min-height: 44px; padding: 11px 21px; border-radius: 999px; border: 1px solid transparent; font: 650 .85rem/1.3 Manrope, 'Segoe UI', sans-serif; cursor: pointer; }
 .scenza-button-primary { background: var(--accent); color: #03241f; border-color: var(--accent); }
 .scenza-button-primary:hover { background: #78ffe7; border-color: #78ffe7; }
 .scenza-button-outline { border-color: #32515a; background: #081820b0; color: #eff8f7; }
@@ -29,7 +29,7 @@
 .scenza-button-ghost:hover { color: #fff; background: #12302f; }
 .scenza-button:focus-visible { outline-color: var(--accent); }
 .scenza-header-actions .scenza-button { min-height: 38px; padding: 9px 18px; font-size: .75rem; }
-.scenza-menu-button { display: none; margin-left: auto; width: 44px; height: 44px; align-items: center; justify-content: center; border: 1px solid #29424a; border-radius: 5px; }
+.scenza-menu-button { display: none; margin-left: auto; width: 44px; height: 44px; align-items: center; justify-content: center; border: 1px solid #29424a; border-radius: 50%; }
 .scenza-mobile-nav { display: none; }
 .scenza-hero { position: relative; isolation: isolate; padding: 62px 0 0; overflow: hidden; }
 .scenza-hero::before { content: ''; position: absolute; inset: 0; z-index: -2; pointer-events: none; background: radial-gradient(ellipse at 73% 35%, #17403d77, transparent 57%), radial-gradient(ellipse at 74% 110%, #02090ccc, transparent 48%), linear-gradient(115deg, #061114, #081b1e 75%, #061316); }
@@ -54,7 +54,7 @@
 .scenza-robot-status { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; text-align: center; }
 .scenza-robot-status p { margin: 0; color: #aac7c9; font-size: .85rem; }
 .scenza-robot-loader { width: 30px; height: 30px; border: 2px solid #35ead029; border-top-color: var(--accent); border-radius: 50%; animation: scenza-robot-loading .9s linear infinite; }
-.scenza-robot-control { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 44px; padding: 10px 18px; color: var(--accent); background: #0a2429; border: 1px solid #32746e; border-radius: 6px; font: inherit; font-size: .85rem; cursor: pointer; }
+.scenza-robot-control { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 44px; padding: 10px 18px; color: var(--accent); background: #0a2429; border: 1px solid #32746e; border-radius: 999px; font: inherit; font-size: .85rem; cursor: pointer; }
 .scenza-robot-control:hover { background: #103731; }
 .scenza-robot-control:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
 @keyframes scenza-robot-loading { to { transform: rotate(360deg); } }
@@ -75,7 +75,7 @@
 .scenza-example video { display: block; width: 100%; height: 100%; object-fit: contain; background: #03090d; }
 .scenza-example-start { position: absolute; inset: 0; width: 100%; text-align: left; }
 .scenza-example-start:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
-.scenza-example-expand { position: absolute; top: 9px; right: 9px; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 5px; color: white; background: #061119b8; }
+.scenza-example-expand { position: absolute; top: 9px; right: 9px; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%; color: white; background: #061119b8; }
 .scenza-example-error { position: absolute; inset: 40% 10px auto; padding: 10px; background: #061119ed; color: #fff !important; font-size: 12px; }
 .scenza-duration { position: absolute; right: 9px; top: 9px; font-size: .62rem; line-height: 1; padding: 5px 6px; border-radius: 3px; background: #091721cf; font-variant-numeric: tabular-nums; }
 .scenza-example-play { position: absolute; left: 50%; top: 42%; transform: translate(-50%,-50%); width: 41px; height: 41px; display: grid; place-items: center; border-radius: 50%; background: #08161ca1; border: 1px solid #d9f0ed9c; color: #f4fffd; }
@@ -121,6 +121,10 @@
 .scenza-faq summary::-webkit-details-marker { display: none; }
 .scenza-faq summary > svg { flex: 0 0 18px; color: #87a4b0; transition: transform .18s; }
 .scenza-faq summary > span { min-width: 0; text-wrap: pretty; }
+.scenza-faq-grid[hidden] { display: none; }
+.scenza-faq .scenza-section-title { align-items: center; }
+.scenza-faq-toggle { transition: transform .18s; }
+.scenza-faq-toggle[data-open=true] { transform: rotate(45deg); }
 .scenza-faq-column { display: grid; gap: 11px; align-content: start; min-width: 0; }
 .scenza-faq details[open] { border-color: #376e72; }
 .scenza-faq details[open] summary > svg { transform: rotate(45deg); color: var(--accent); }

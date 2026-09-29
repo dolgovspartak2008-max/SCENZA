@@ -45,14 +45,14 @@
 .scenza-profile-section p { margin: 0; color: #c0dbce; font-size: .78rem; line-height: 1.5; }
 .scenza-profile-row { display: flex; gap: 6px; }
 .scenza-profile-row input { flex: 1; min-width: 0; min-height: 38px; padding: 8px 10px; border: 1px solid #2a4a52; border-radius: 8px; background: #051317; color: #e6f2f0; font: inherit; font-size: .8rem; }
-.scenza-profile-row button { min-width: 44px; min-height: 38px; padding: 0 12px; border: 1px solid #2f6a63; border-radius: 8px; background: #0d2b2a; color: var(--accent, #45f0d6); font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer; }
+.scenza-profile-row button { min-width: 44px; min-height: 38px; padding: 0 12px; border: 1px solid #2f6a63; border-radius: 999px; background: #0d2b2a; color: var(--accent, #45f0d6); font: inherit; font-size: .8rem; font-weight: 600; cursor: pointer; }
 .scenza-profile-row button:disabled { opacity: .5; cursor: not-allowed; }
 .scenza-profile-row :focus-visible, .scenza-profile-language button:focus-visible, .scenza-profile-section summary:focus-visible { outline: 2px solid var(--accent, #45f0d6); outline-offset: 2px; }
 .scenza-profile-invite { padding: 12px; border: 1px solid #285844; border-radius: 10px; background: #0b231d; }
 .scenza-profile-settings { grid-template-columns: 1fr; }
 .scenza-profile-language { display: flex; align-items: center; gap: 6px; font-size: .8rem; color: #93aeb6; }
 .scenza-profile-language span { margin-right: auto; }
-.scenza-profile-language button { min-width: 44px; min-height: 34px; border: 1px solid #23464c; border-radius: 6px; background: transparent; color: #b8cdd2; font: inherit; font-size: .75rem; cursor: pointer; }
+.scenza-profile-language button { min-width: 44px; min-height: 34px; border: 1px solid #23464c; border-radius: 999px; background: transparent; color: #b8cdd2; font: inherit; font-size: .75rem; cursor: pointer; }
 .scenza-profile-language button[aria-pressed=true] { color: var(--accent, #45f0d6); background: #0d2b2a; }
 .scenza-profile-telegram { display: flex; align-items: center; gap: 8px; font-size: .8rem; color: #c0dbce; }
 .scenza-profile-telegram a { color: var(--accent, #45f0d6); }
@@ -74,7 +74,7 @@
 .scenza-auth-dialog .scenza-auth-input input { width: 100%; min-width: 0; min-height: 58px; margin: 0; padding: 15px 49px; border: 1px solid #29584c; border-radius: 12px; background: #041c15; font-size: 1rem; color: #f0fff8; }
 .scenza-auth-input input::placeholder { color: #90ada5; opacity: 1; }
 .scenza-auth-input > button { position: absolute; right: 4px; display: grid; place-items: center; width: 44px; height: 44px; color: #a5c9bc; border-radius: 8px; }
-.scenza-auth-dialog .scenza-auth-submit { min-height: 56px; border-radius: 12px; font-size: 1rem; }
+.scenza-auth-dialog .scenza-auth-submit { min-height: 56px; border-radius: 999px; font-size: 1rem; }
 .scenza-auth-dialog .scenza-auth-options { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px 16px; margin: -7px 0 18px; }
 .scenza-auth-options label, .scenza-auth-consents label { display: flex; align-items: flex-start; gap: 10px; margin: 0; line-height: 1.6; }
 .scenza-auth-dialog input[type=checkbox] { width: 20px; height: 20px; min-height: 20px; flex-shrink: 0; margin: 2px 0 0; padding: 0; accent-color: #4fe7cc; }

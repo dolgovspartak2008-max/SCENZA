@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CSSProperties } from 'react';
+import { SafeZonePicker, SafeZones, coversInterface, platforms } from './SafeZones';
+import type { Platform } from './SafeZones';
 
 export type Ad = {
   fileId: string; kind?: 'image' | 'video'; mediaDuration?: number; position: string; width: number; height?: number; fill?: boolean;
@@ -66,6 +68,7 @@ export default function BannerEditor({ ad, savedAd, setAd, clip, format, fileUrl
   const input = useRef<HTMLInputElement>(null), frame = useRef<HTMLCanvasElement>(null), probe = useRef<HTMLVideoElement>(null);
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
   const [replay, setReplay] = useState(0);
+  const [platform, setPlatform] = useState<Platform | ''>(format === '9:16' ? 'tiktok' : '');
   const changed = !!ad && !sameAd(ad, savedAd, clip);
   const insert = ad?.position === 'insert';
   const box = useMemo(() => ad ? bannerBox(ad, format, natural) : null, [ad, format, natural]);
@@ -111,7 +114,10 @@ export default function BannerEditor({ ad, savedAd, setAd, clip, format, fileUrl
             ? <video className="ai-banner-media" src={fileUrl(ad.fileId)} muted loop autoPlay playsInline onLoadedMetadata={event => setNatural({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight })} style={{ left: box.left, top: box.top, width: box.width, height: box.height, opacity: ad.opacity, objectFit: ad.fit === 'cover' ? 'cover' : 'fill' }} />
             : <img className="ai-banner-media" src={fileUrl(ad.fileId)} alt="Ваш баннер" onLoad={event => setNatural({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} style={{ left: box.left, top: box.top, width: box.width, height: box.height, opacity: ad.opacity, objectFit: ad.fit === 'cover' ? 'cover' : 'fill' }} />)}
           {insert && <span className="ai-banner-badge">Пауза · {ad.duration} сек.</span>}
+          {format === '9:16' && <SafeZones platform={platform} />}
         </div>
+        {format === '9:16' && <SafeZonePicker value={platform} onChange={setPlatform} />}
+        {format === '9:16' && platform && box && !insert && coversInterface(box, platform) && <p className="ai-note ai-banner-warning" role="status">Баннер заходит под кнопки или подпись {platforms[platform].label}. Сдвиньте или уменьшите его.</p>}
         {frameSource && <video ref={probe} className="ai-banner-probe" src={frameSource} muted playsInline preload="auto" aria-hidden="true" tabIndex={-1} />}
         <div className="ai-banner-timeline" role="button" tabIndex={0} aria-label="Шкала ролика: нажмите, чтобы выбрать момент баннера" onClick={event => { if (currentMode === 'final') return; const rect = event.currentTarget.getBoundingClientRect(); const at = (event.clientX - rect.left) / rect.width * total; update({ start: round(insert ? Math.min(at, clip - .1) : at - ad.duration / 2) }); }} onKeyDown={event => { if (event.key === 'ArrowLeft') update({ start: ad.start - .5 }); if (event.key === 'ArrowRight') update({ start: ad.start + .5 }); }}>
           {segment && <span className={insert ? 'is-pause' : ''} style={{ left: `${segment.left}%`, width: `${Math.max(1.5, segment.width)}%` }} />}

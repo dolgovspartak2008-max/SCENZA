@@ -34,7 +34,7 @@ const adminJob = row => {
 };
 const adminProject = project => ({ id: project.id, ownerId: project.ownerId, status: project.status, duration: project.duration || 0, createdAt: project.createdAt, updatedAt: project.updatedAt, analyzedAt: project.analyzedAt || null, model: project.analysisModel || null, editRequests: Object.keys(project.editCache || {}).length, clips: [...(project.candidates || []).filter(item => item.ready), ...(project.exports || (project.finalFile ? [{ createdAt: project.updatedAt }] : []))].map(item => ({ createdAt: item.createdAt || project.createdAt })) });
 // Token ledger entries share the append-only usage table: 1 token = 1 minute of source video, grants are positive, charges negative.
-const tokenReasons = ['trial', 'purchase', 'grant', 'referral', 'promo', 'analysis', 'refund'];
+const tokenReasons = ['trial', 'purchase', 'grant', 'referral', 'promo', 'analysis', 'refund', 'bonus'];
 function tokenFields(value) {
   if (!Number.isSafeInteger(value.tokens) || value.tokens === 0 || Math.abs(value.tokens) > 100000 || !tokenReasons.includes(value.reason)) throw new Error('Invalid token entry');
   return { tokens: value.tokens, reason: value.reason, note: String(value.note || '').slice(0, 120) };
@@ -215,7 +215,7 @@ function supabaseStore(env) {
     if (!response.ok) {
       const body = await response.json().catch(() => null);
       const missingUsage = ['PGRST205', '42P01'].includes(body?.code);
-      throw Object.assign(new Error(`Video database request failed (${response.status}); check server migration and credentials`), { status: response.status, ...(missingUsage ? { code: 'VIDEO_TABLE_MISSING' } : {}) });
+      throw Object.assign(new Error(`Video database request failed (${response.status}); check server migration and credentials`), { status: response.status, code: missingUsage ? 'VIDEO_TABLE_MISSING' : `VIDEO_HTTP_${response.status}`, ...(body?.code ? { providerCode: String(body.code).slice(0, 20) } : {}) });
     }
     try { return response.status === 204 ? null : await response.json(); }
     catch { throw new Error('Invalid video database response'); }

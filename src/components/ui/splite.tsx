@@ -6,7 +6,19 @@ import { useMotionActivity } from './use-motion-activity';
 
 const robotScene = 'https://prod.spline.design/kZDDjO5HuC9GJUM2/scene.splinecode';
 // Start the runtime chunk and the scene download as soon as the landing module loads, in parallel with the rest of the page.
-const loadSpline = () => import('@splinetool/react-spline');
+// The scene asks for the full device pixel ratio (up to 3 on phones = 9x the pixels). Above 1.5 the glowing robot looks the same,
+// so the ratio is capped once for every Spline instance; animation, lighting and cursor tracking are untouched.
+const MAX_PIXEL_RATIO = 1.5;
+type PixelRatioPatch = { _getPixelRatio?: (mode: number) => number; __scenzaPixelRatio?: boolean };
+const loadSpline = () => Promise.all([import('@splinetool/runtime'), import('@splinetool/react-spline')]).then(([runtime, spline]) => {
+  const prototype = runtime.Application.prototype as unknown as PixelRatioPatch;
+  const original = prototype._getPixelRatio;
+  if (typeof original === 'function' && !prototype.__scenzaPixelRatio) {
+    prototype._getPixelRatio = function (this: unknown, mode: number) { return Math.min(original.call(this, mode) || 1, MAX_PIXEL_RATIO); };
+    prototype.__scenzaPixelRatio = true;
+  }
+  return spline;
+});
 const splineModule = typeof window === 'undefined' || window.matchMedia('(prefers-reduced-motion: reduce)').matches ? null : loadSpline();
 if (splineModule && !document.querySelector(`link[href="${robotScene}"]`)) {
   for (const [rel, href] of [['preconnect', 'https://prod.spline.design'], ['preload', robotScene]]) {
