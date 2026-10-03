@@ -54,6 +54,13 @@ test('accounts isolate libraries and media; the free start does not expire by da
   // The free start is 10 tokens without a deadline: access stays active, the token balance is the limit.
   assert.equal((await (await request('/api/auth/session', first.cookie)).json()).user.accessActive, true);
   assert.equal((await request('/api/projects', first.cookie)).status, 200);
+  const notifications = await (await request('/api/notifications', first.cookie)).json();
+  assert.ok(notifications.items.some(item => item.title === 'Стартовые токены' && item.unread));
+  assert.equal((await (await request('/api/notifications/read', first.cookie, {})).json()).unread, 0);
+  assert.equal((await (await request('/api/notifications', first.cookie)).json()).unread, 0);
+  assert.notEqual((await request('/api/notifications')).status, 200);
+  const referrals = await (await request('/api/account/referrals', first.cookie)).json();
+  assert.deepEqual([referrals.code, referrals.invited, referrals.earned], [first.user.referralCode, [], 0]);
   assert.equal((await request('/api/auth/logout', first.cookie, {})).status, 200);
   assert.equal((await request('/api/projects', first.cookie)).status, 401);
 });

@@ -12,6 +12,7 @@ import { spawn } from 'node:child_process';
 import ffmpegPath from 'ffmpeg-static';
 import ffprobe from 'ffprobe-static';
 import { createAuth } from './auth.mjs';
+import { buildNotifications, createNotificationState } from './notifications.mjs';
 import { createAdminService } from './admin.mjs';
 import { createTelegramMembership } from './telegram-membership.mjs';
 
@@ -122,6 +123,7 @@ export async function createServer({ dataDir = process.env.SCENA_DATA_DIR || pat
   };
   const auth = authOptions === null ? null : await createAuth({ allowedOrigins: ['http://127.0.0.1:5173', 'http://localhost:5173'], telegramMembership: createTelegramMembership({ botToken: authOptions.telegramBotToken || process.env.SCENA_BOT_TOKEN }), tokenLedger, onRegister: referralBonus, ...authOptions, dataDir: path.join(dataDir, 'auth') });
   const accountStudios = new Map();
+  const notificationState = createNotificationState(dataDir);
   let videoApi;
   const getVideoApi = () => videoApi ||= import('./ai/api.mjs').then(({ createVideoApi }) => createVideoApi({ dataDir })).catch(error => { videoApi = null; throw error; });
   const admin = auth ? await createAdminService({ auth, dataDir, getVideoApi }) : null;
@@ -416,6 +418,26 @@ export async function createServer({ dataDir = process.env.SCENA_DATA_DIR || pat
         if (await auth.handle(request, response, route)) return;
         const account = auth.session(request);
         if (account) {
+          if (route === '/api/notifications' || route === '/api/notifications/read') {
+            if (route.endsWith('/read')) {
+              if (method !== 'POST') throw fail('Метод не поддерживается.', 405);
+              await notificationState.markRead(account.id); send({ unread: 0 }); return;
+            }
+            if (method !== 'GET') throw fail('Метод не поддерживается.', 405);
+            const video = await getVideoApi(), { projectNumbers, projectTitle } = await import('./ai/api.mjs');
+            await video.tokens.summary(account.id); // grants the welcome tokens on first contact, like the balance does
+            const [tokens, projects, support, readAt] = await Promise.all([video.store.ownerTokens(account.id), video.store.listProjects(account.id), admin.userSupport(account.id), notificationState.readAt(account.id)]);
+            const numbers = projectNumbers(projects);
+            const items = buildNotifications({ tokens, projects, support, events: auth.events(account.id), title: project => projectTitle(numbers.get(project.id) || 1) })
+              .map(item => ({ ...item, unread: !readAt || item.createdAt > readAt }));
+            send({ items, unread: items.filter(item => item.unread).length }); return;
+          }
+          if (route === '/api/account/referrals') {
+            if (method !== 'GET') throw fail('Метод не поддерживается.', 405);
+            const video = await getVideoApi(), tokens = await video.store.ownerTokens(account.id);
+            const earned = tokens.filter(entry => entry.reason === 'referral' && entry.tokens > 0 && String(entry.id).endsWith('-inviter')).reduce((sum, entry) => sum + entry.tokens, 0);
+            send({ ...auth.referrals(account.id), earned }); return;
+          }
           if (route === '/api/support') {
             if (method === 'GET') { send({ tickets: await admin.userSupport(account.id) }); return; }
             if (method === 'POST') {

@@ -9,7 +9,7 @@ import { BackgroundPaths, AnimatedHeadline } from '@/components/ui/background-pa
 import { ParticleBackground } from '@/components/ui/particle-background';
 import { content } from './content';
 import { ProductDemo } from './ProductDemo';
-import { SplineScene } from '@/components/ui/splite';
+import { RobotVideo } from '@/components/ui/robot-video';
 import { Spotlight } from '@/components/ui/spotlight';
 import { parseSelection } from './plans';
 import { demoPlans } from './plans';
@@ -141,7 +141,7 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
     </header>
     <main id="scenza-main" tabIndex={-1}>
       <Spotlight />
-      <section id="hero" tabIndex={-1} data-section-label={language === 'ru' ? 'Главная' : 'Home'} className="scenza-hero"><BackgroundPaths className="scenza-hero-paths" /><div className="scenza-container scenza-hero-grid"><div className="scenza-hero-copy"><AnimatedHeadline text={copy.hero.title} className="scenza-hero-title" /><p>{copy.hero.subtitle}</p><div className="scenza-hero-buttons"><Button size="lg" onClick={() => openAuth('register')}>{copy.hero.primary}<ArrowRight size={20} /></Button></div></div><SplineScene language={language} onSettled={finishLoading} /></div></section>
+      <section id="hero" tabIndex={-1} data-section-label={language === 'ru' ? 'Главная' : 'Home'} className="scenza-hero"><BackgroundPaths className="scenza-hero-paths" /><div className="scenza-container scenza-hero-grid"><div className="scenza-hero-copy"><AnimatedHeadline text={copy.hero.title} className="scenza-hero-title" /><p>{copy.hero.subtitle}</p><div className="scenza-hero-buttons"><Button size="lg" onClick={() => openAuth('register')}>{copy.hero.primary}<ArrowRight size={20} /></Button></div></div><RobotVideo language={language} onSettled={finishLoading} /></div></section>
 
       <section id="examples" tabIndex={-1} data-section-label={language === 'ru' ? 'Примеры' : 'Examples'} className="scenza-container scenza-examples"><div className="scenza-section-title"><div><h2>{copy.examples.title}</h2><p>{copy.examples.description}</p></div><span className="scenza-demo-badge"><Film size={14} />{copy.examples.badge}</span></div><div className="scenza-examples-grid">{examples.map((example, index) => <VideoExample key={example.id} id={example.id} duration={example.duration} title={copy.examples.names[index]} type={copy.examples.types[index]} watch={copy.examples.watch} language={language} onExpand={() => setVideoIndex(index)} />)}<aside className="scenza-platform-panel"><h3>{copy.platforms.title}</h3><p>{copy.platforms.description}</p><div className="scenza-platforms">
 <span className="scenza-platform scenza-platform-tiktok"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16 2h-3v13a3 3 0 1 1-3-3V9a6 6 0 1 0 6 6V8a8 8 0 0 0 5 2V7a5 5 0 0 1-5-5Z" /></svg>TikTok</span>

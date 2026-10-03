@@ -95,11 +95,18 @@ async function main() {
       backend.listen(config.port, config.host, () => { backend.off('error', reject); resolve(); });
     });
     if (config.botOptions) {
-      stage = 'подключение Telegram';
       const { createTelegramBots } = await import('./telegram-bots.mjs');
       bots = createTelegramBots({ ...config.botOptions, service: backend.auth.bots });
-      await bots.configure();
-      await bots.start();
+      // The site must keep working while Telegram is unreachable: retry the bot in the background.
+      const startBots = async () => {
+        if (stopping) return;
+        try { await bots.configure(); await bots.start(); console.log('SCENZA: Telegram-бот запущен.'); }
+        catch {
+          console.error('SCENZA: Telegram-бот не запущен (нет связи с Telegram или настроен webhook). Повтор через 60 секунд.');
+          setTimeout(() => void startBots(), 60000).unref();
+        }
+      };
+      await startBots();
     }
     const shutdown = () => void stop().catch(() => {
       console.error('SCENZA: ошибка остановки сервиса.');

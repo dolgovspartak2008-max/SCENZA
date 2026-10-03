@@ -135,3 +135,32 @@
 .safe-zone-picker{display:flex!important;flex-direction:row;align-items:center;gap:10px;justify-self:center;font-size:13px}.safe-zone-picker select{width:auto!important;min-height:36px;padding:6px 10px!important}.ai-banner-warning{color:#ffb4a8}
 .ai-estimate{display:grid;gap:6px;width:100%;margin-top:6px;padding:12px 14px;border:1px solid #285844;border-radius:10px;background:#0d2a20;text-align:left}.ai-estimate strong{color:#84f5cd;font-size:15px}.ai-estimate span{color:#c0dbce;font-size:13px}.ai-estimate.is-short{border-color:#6b3a3a;background:#2a1717}.ai-estimate.is-short strong{color:#ffb4a8}.ai-estimate .ai-actions{justify-content:flex-start}
 .ai-bonus{display:grid;gap:6px;padding:14px 16px;border:1px solid #2c6a5c;border-radius:10px;background:linear-gradient(120deg,#0d2a24,#0b191f 70%)}.ai-bonus strong{color:#84f5cd;font-size:15px}.ai-bonus span{color:#c0dbce;font-size:13px}.ai-bonus-row{display:flex;gap:8px;flex-wrap:wrap}.ai-bonus-row input{flex:1 1 240px}
+.ai-subtitles{padding:22px;display:grid;gap:16px;min-width:0;border-radius:12px}
+.ai-subtitles .ai-note{margin:0}
+.ai-subtitles-layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(200px,300px);gap:28px;align-items:start}
+.ai-subtitles-controls{display:grid;gap:18px;min-width:0}
+.ai-subtitles-controls[aria-disabled=true]{opacity:.55}
+.ai-subtitles fieldset{display:grid;gap:10px;min-width:0;margin:0;padding:0;border:0}
+.ai-subtitles legend{margin-bottom:10px;font-size:14px;font-weight:700}
+.ai-subtitle-styles,.ai-subtitle-mode{display:flex!important;flex-wrap:wrap;gap:8px}
+.ai-subtitle-styles button,.ai-subtitle-mode button{min-height:40px;padding:8px 14px;border-radius:999px;border:1px solid #365061;background:#0c1820;color:#e6eff3;font:inherit;font-size:14px;cursor:pointer}
+.ai-subtitle-styles button[aria-pressed=true],.ai-subtitle-mode button[aria-pressed=true]{background:#40dccc;border-color:#40dccc;color:#021c22;font-weight:700}
+.ai-subtitle-fonts{grid-template-columns:repeat(auto-fill,minmax(118px,1fr))}
+.ai-subtitle-fonts button{display:grid;gap:4px;min-height:64px;padding:10px 12px;border:1px solid #365061;border-radius:10px;background:#0c1820;color:#f4fbfd;font-size:16px;text-align:left;cursor:pointer}
+.ai-subtitle-fonts button small{font-family:inherit;font-size:13px;color:#9fb6c0}
+.ai-subtitle-fonts button[aria-pressed=true]{border-color:#40dccc;box-shadow:inset 0 0 0 1px #40dccc;background:#0d2a2d}
+.ai-subtitle-row{display:flex;flex-wrap:wrap;align-items:center;gap:12px}
+.ai-subtitle-row label{display:flex!important;align-items:center;gap:8px!important}
+.ai-studio .ai-subtitle-row input[type=color]{width:46px;height:36px;padding:2px;cursor:pointer}
+.ai-subtitle-swatch button{width:26px;height:26px;border:1px solid #365061;border-radius:50%;background:#0c1820;color:#e6eff3;cursor:pointer}
+.ai-subtitle-palettes{display:flex;flex-wrap:wrap;gap:8px}
+.ai-subtitle-palettes button{display:flex;gap:3px;padding:6px 8px;border:1px solid #365061;border-radius:999px;background:#0c1820;cursor:pointer}
+.ai-subtitle-palettes button:hover{border-color:#40dccc}
+.ai-subtitle-palettes i{width:16px;height:16px;border-radius:50%;border:1px solid #00000066}
+.ai-subtitles-preview{position:sticky;top:12px;display:grid;gap:8px}
+.ai-subtitle-stage{position:relative;width:100%;overflow:hidden;border:1px solid #365061;border-radius:10px;background:linear-gradient(160deg,#21414b,#0a1a20 60%,#13242b)}
+.ai-subtitle-stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(.8)}
+.ai-subtitle-stage p{position:absolute;left:9%;right:9%;margin:0;text-align:center;line-height:1.15;paint-order:stroke fill;overflow-wrap:anywhere;text-shadow:0 2px 6px #00000080}
+.ai-subtitle-guide{position:absolute;left:0;right:0;height:20%;border-top:1px dashed #ffffff55;background:linear-gradient(to bottom,#ffffff0a,transparent);pointer-events:none}
+@media (max-width:860px){.ai-subtitles-layout{grid-template-columns:minmax(0,1fr)}.ai-subtitles-preview{position:static;max-width:300px;width:100%;justify-self:center;order:-1}}
+@media (max-width:520px){.ai-subtitles{padding:16px}.ai-subtitle-fonts{grid-template-columns:repeat(2,minmax(0,1fr))}}

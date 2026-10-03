@@ -375,9 +375,17 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
         health[type].error = null;
       } catch (error) {
         if (signal.aborted) break;
-        if ([401, 409].includes(error.telegramCode)) {
-          health[type].error = `Telegram: ошибка ${error.telegramCode}. Проверьте авторизацию и отсутствие другого процесса polling.`;
+        if (error.telegramCode === 401) {
+          health[type].error = 'Telegram: ошибка 401. Проверьте токен бота.';
+          console.error(`SCENZA: Telegram ${type} отклонил токен (401). Получение сообщений остановлено.`);
           break;
+        }
+        if (error.telegramCode === 409) {
+          // Another getUpdates consumer (a local copy or a webhook) holds the bot. Keep retrying instead of going silent forever.
+          health[type].error = 'Telegram: ошибка 409 — этот бот одновременно запущен в другом месте. Повторная попытка через 30 секунд.';
+          console.error(`SCENZA: Telegram ${type} занят другим процессом (409). Повтор через 30 секунд.`);
+          await timers.setTimeout(30000, undefined, { signal }).catch(() => {});
+          continue;
         }
         failures = Math.min(failures + 1, 6);
         health[type].error = 'Telegram временно недоступен или вернул некорректный ответ. Повторное подключение автоматически.';
@@ -392,8 +400,8 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
           try { await handle(type, update); break; }
           catch (error) {
             if (signal.aborted) break;
-            if ([401, 409].includes(error.telegramCode)) {
-              health[type].error = `Telegram: ошибка ${error.telegramCode}. Проверьте авторизацию и отсутствие другого процесса polling.`;
+            if (error.telegramCode === 401) {
+              health[type].error = 'Telegram: ошибка 401. Проверьте токен бота.';
               halt = true; break;
             }
             const delivery = error.telegramMethod === 'sendMessage';
@@ -402,8 +410,10 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
               break;
             }
             if (attempt === 4) {
-              health[type].error = 'Не удалось обработать обновление. Оно сохранено; требуется проверка сервиса.';
-              halt = true; break;
+              // One broken update must not stop the bot for everyone: skip it and keep polling.
+              health[type].skippedUpdates = (health[type].skippedUpdates || 0) + 1;
+              console.error(`SCENZA: Telegram ${type} пропустил обновление ${update.update_id} после 5 неудачных попыток.`);
+              break;
             }
             await timers.setTimeout(Math.min(60, Math.max(error.retryAfter || 0, 2 ** (attempt + 1))) * 1000, undefined, { signal }).catch(() => {});
           }
@@ -414,8 +424,10 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
         try { persist(); }
         catch {
           offsets[type] = old;
-          health[type].error = 'Не удалось сохранить позицию Telegram. Обработка остановлена без пропуска обновления.';
-          halt = true; break;
+          health[type].error = 'Не удалось сохранить позицию Telegram. Повторная попытка через 30 секунд.';
+          console.error('SCENZA: не удалось сохранить позицию Telegram. Повтор через 30 секунд.');
+          await timers.setTimeout(30000, undefined, { signal }).catch(() => {});
+          break;
         }
       }
       if (halt) break;

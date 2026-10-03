@@ -1,11 +1,18 @@
 import { spawn } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import ffmpeg from 'ffmpeg-static';
 import ffprobe from 'ffprobe-static';
 
 export const fail = (message, status = 400) => Object.assign(new Error(message), { status });
 const styles = ['Minimal', 'Classic', 'Dynamic', 'Bold', 'Cinematic'];
+// Subtitle fonts ship with the site (public/fonts/subtitles); libass loads them by family name through `fontsdir`.
+export const SUBTITLE_FONTS = { montserrat: 'SCENZA Montserrat Black', manrope: 'SCENZA Manrope ExtraBold', rubik: 'SCENZA Rubik ExtraBold', unbounded: 'SCENZA Unbounded Bold', oswald: 'SCENZA Oswald Bold', nunito: 'SCENZA Nunito Black', inter: 'SCENZA Inter ExtraBold' };
+export const SUBTITLE_FONTS_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../public/fonts/subtitles');
+// A relative path keeps drive letters and spaces out of the filter graph; each special character is escaped for both parsing levels.
+const filterPath = (cwd, target) => (path.relative(cwd, target) || '.').replaceAll('\\', '/').replace(/[\\:',;\[\]\s]/g, char => `\\\\\\${char}`);
+const hex = /^#[\da-f]{6}$/i;
 const timeline = settings => settings.segments || [{ start: settings.start, end: settings.end }];
 export const timelineDuration = settings => timeline(settings).reduce((total, segment) => total + segment.end - segment.start, 0);
 // 'insert' pauses the clip at `start`, plays the banner for `duration` seconds, then resumes the clip.
@@ -43,7 +50,7 @@ export function applyAdPatch(ad, patch, clipDuration) {
   return normalizeAd(next, clipDuration);
 }
 export function normalizeSettings(input, duration) {
-  const settings = { start: 0, end: Math.min(duration, 30), format: '9:16', cropX: 50, cropMode: 'smart', cropSmoothing: 0.7, muted: false, subtitles: true, subtitleStyle: 'Classic', subtitleSize: 54, subtitleColor: '', subtitlePosition: 'bottom', subtitleReplacements: [], keywords: [], musicId: '', musicVolume: 0.18, ...input };
+  const settings = { start: 0, end: Math.min(duration, 30), format: '9:16', cropX: 50, cropMode: 'smart', cropSmoothing: 0.7, muted: false, subtitles: true, subtitleStyle: 'Classic', subtitleSize: 54, subtitleColor: '', subtitleFont: '', subtitleColors: [], subtitleColorEvery: 1, subtitleAccentColor: '', subtitleY: null, subtitlePosition: 'bottom', subtitleReplacements: [], keywords: [], musicId: '', musicVolume: 0.18, ...input };
   if (settings.segments !== undefined) {
     if (!Array.isArray(settings.segments) || !settings.segments.length || settings.segments.length > 12 || settings.segments.some(segment => !segment || !Number.isFinite(segment.start) || !Number.isFinite(segment.end) || segment.start < 0 || segment.end <= segment.start || segment.end > duration)) throw fail('Проверьте границы сцен: от 1 до 12 частей в пределах видео.');
     settings.segments = settings.segments.map(({ start, end }) => ({ start, end }));
@@ -57,8 +64,13 @@ export function normalizeSettings(input, duration) {
   settings.subtitleReplacements = settings.subtitleReplacements.map(({from,to})=>({from,to}));
   if (!Array.isArray(settings.keywords) || settings.keywords.length > 30 || settings.keywords.some(word => typeof word !== 'string' || !word.trim() || word.length > 100)) throw fail('Выберите до 30 слов или фраз для акцентов в субтитрах.');
   settings.keywords = settings.keywords.map(word => word.trim());
-  if (settings.subtitleColor !== '' && (typeof settings.subtitleColor !== 'string' || !/^#[\da-f]{6}$/i.test(settings.subtitleColor))) throw fail('Цвет субтитров должен быть в формате #RRGGBB.');
-  return Object.fromEntries(['start','end',...(settings.segments ? ['segments'] : []),'format','cropX','cropMode','cropSmoothing','muted','subtitles','subtitleStyle','subtitleSize','subtitleColor','subtitlePosition','subtitleReplacements','keywords','musicId','musicVolume'].map(key => [key, settings[key]]));
+  if (settings.subtitleColor !== '' && (typeof settings.subtitleColor !== 'string' || !hex.test(settings.subtitleColor))) throw fail('Цвет субтитров должен быть в формате #RRGGBB.');
+  if (settings.subtitleFont !== '' && !Object.hasOwn(SUBTITLE_FONTS, settings.subtitleFont)) throw fail('Выберите шрифт субтитров из списка.');
+  if (!Array.isArray(settings.subtitleColors) || settings.subtitleColors.length > 4 || settings.subtitleColors.some(color => typeof color !== 'string' || !hex.test(color))) throw fail('Для разноцветных субтитров выберите до 4 цветов #RRGGBB.');
+  if (!Number.isInteger(settings.subtitleColorEvery) || settings.subtitleColorEvery < 1 || settings.subtitleColorEvery > 4) throw fail('Смена цвета: от 1 до 4 слов.');
+  if (settings.subtitleAccentColor !== '' && (typeof settings.subtitleAccentColor !== 'string' || !hex.test(settings.subtitleAccentColor))) throw fail('Цвет акцентов должен быть в формате #RRGGBB.');
+  if (settings.subtitleY !== null && (!Number.isFinite(settings.subtitleY) || settings.subtitleY < 8 || settings.subtitleY > 95)) throw fail('Высота субтитров: от 8 до 95% кадра.');
+  return Object.fromEntries(['start','end',...(settings.segments ? ['segments'] : []),'format','cropX','cropMode','cropSmoothing','muted','subtitles','subtitleStyle','subtitleSize','subtitleColor','subtitleFont','subtitleColors','subtitleColorEvery','subtitleAccentColor','subtitleY','subtitlePosition','subtitleReplacements','keywords','musicId','musicVolume'].map(key => [key, settings[key]]));
 }
 
 export function run(binary, args, { cwd, duration, onProgress, timeout = 3 * 3600000, signal } = {}) {
@@ -122,6 +134,16 @@ function subtitleCues(segments, settings, maxChars) {
   }
   return cues;
 }
+const assColor = value => `&H00${value.slice(5,7)}${value.slice(3,5)}${value.slice(1,3)}`.toUpperCase();
+export function subtitlePreset(style) {
+  return {
+    Minimal: { font: 'manrope', scale: .95, color: '&H00FFFFFF', secondary: '&H00FFFFFF', border: 1, outline: 2, shadow: 1 },
+    Classic: { font: 'montserrat', scale: 1, color: '&H00FFFFFF', secondary: '&H00FFFFFF', border: 1, outline: 4, shadow: 0 },
+    Dynamic: { font: 'montserrat', scale: 1, color: '&H00FFFFFF', secondary: '&H0000DFFF', border: 1, outline: 4, shadow: 1 },
+    Bold: { font: 'rubik', scale: 1.12, color: '&H0000DFFF', secondary: '&H0000DFFF', border: 1, outline: 5, shadow: 2 },
+    Cinematic: { font: 'oswald', scale: 1.05, color: '&H00E4EDFA', secondary: '&H00E4EDFA', border: 1, outline: 2, shadow: 1 },
+  }[style];
+}
 export function buildSubtitles(segments, settings, width, height) {
   if (settings.segments) {
     let offset = 0;
@@ -135,17 +157,15 @@ export function buildSubtitles(segments, settings, width, height) {
     });
     settings = { ...settings, start: 0, end: offset, segments: undefined };
   }
-  const preset = {
-    Minimal: { font: 'Arial', scale: 1, color: '&H00FFFFFF', bold: 0, border: 1, outline: 1, shadow: 0 },
-    Classic: { font: 'Arial', scale: 1, color: '&H00FFFFFF', bold: -1, border: 3, outline: 3, shadow: 0 },
-    Dynamic: { font: 'Arial', scale: 1, color: '&H00FFFFFF', bold: -1, border: 1, outline: 3, shadow: 1 },
-    Bold: { font: 'Arial', scale: 1.12, color: '&H0000DFFF', bold: -1, border: 1, outline: 4, shadow: 2 },
-    Cinematic: { font: 'Georgia', scale: 1.05, color: '&H00E4EDFA', bold: 0, border: 1, outline: 2, shadow: 1 },
-  }[settings.subtitleStyle];
-  if (settings.subtitleColor) preset.color = `&H00${settings.subtitleColor.slice(5,7)}${settings.subtitleColor.slice(3,5)}${settings.subtitleColor.slice(1,3)}`;
+  const preset = { ...subtitlePreset(settings.subtitleStyle) };
+  const font = SUBTITLE_FONTS[settings.subtitleFont] || SUBTITLE_FONTS[preset.font];
+  if (settings.subtitleColor) preset.color = assColor(settings.subtitleColor);
   const fontSize = Math.round(settings.subtitleSize * width / 1080 * preset.scale);
-  const align = { top: 8, center: 5, bottom: 2 }[settings.subtitlePosition];
-  let result = `[Script Info]\nScriptType: v4.00+\nPlayResX: ${width}\nPlayResY: ${height}\nWrapStyle: 0\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,${preset.font},${fontSize},${preset.color},&H0000DFFF,&H00101010,&H90000000,${preset.bold},0,0,0,100,100,0,0,${preset.border},${preset.outline},${preset.shadow},${align},${Math.round(width * .09)},${Math.round(width * .15)},${Math.round(height * .18)},1\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n`;
+  // A custom height anchors the bottom edge of the text at subtitleY % of the frame; otherwise the preset position is used.
+  const custom = Number.isFinite(settings.subtitleY);
+  const align = custom ? 2 : { top: 8, center: 5, bottom: 2 }[settings.subtitlePosition];
+  const marginV = custom ? Math.round(height * (100 - settings.subtitleY) / 100) : Math.round(height * .18);
+  let result = `[Script Info]\nScriptType: v4.00+\nPlayResX: ${width}\nPlayResY: ${height}\nWrapStyle: 0\n[V4+ Styles]\nFormat: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding\nStyle: Default,${font},${fontSize},${preset.color},${preset.secondary},&H00101010,&H90000000,0,0,0,0,100,100,0,0,${preset.border},${preset.outline},${preset.shadow},${align},${Math.round(width * .09)},${Math.round(width * .09)},${marginV},1\n[Events]\nFormat: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text\n`;
   const maxChars = Math.max(16, Math.min(42, Math.floor(width * .76 / (fontSize * .7)) * 2));
   const replace = value => (settings.subtitleReplacements || []).reduce((text, {from,to})=>{
     const corrected=text.replaceAll(from,()=>to);
@@ -161,7 +181,16 @@ export function buildSubtitles(segments, settings, width, height) {
     }
     return selected;
   };
-  const emphasize = (value, accent) => accent ? `{\\c&H00DFFF&\\b1}${escapeAss(value)}{\\r}` : escapeAss(value);
+  const accentColor = settings.subtitleAccentColor ? assColor(settings.subtitleAccentColor).slice(4) : '00DFFF';
+  const palette = (settings.subtitleColors || []).length > 1 ? settings.subtitleColors.map(color => assColor(color).slice(4)) : null;
+  // Multicolour mode: every `subtitleColorEvery` spoken words switch to the next colour; accents still win.
+  let spoken = 0;
+  const paint = () => palette ? `{\\c&H${palette[Math.floor(spoken++ / settings.subtitleColorEvery) % palette.length]}&}` : '';
+  const emphasize = (value, accent) => {
+    if (!/[\p{L}\p{N}]/u.test(value)) return escapeAss(value);
+    const colour = paint();
+    return accent ? `{\\c&H${accentColor}&}${escapeAss(value)}{\\r}` : colour ? `${colour}${escapeAss(value)}{\\r}` : escapeAss(value);
+  };
   const corrected = segments.map(segment => {
     const words = segment.words?.map(word => ({ ...word, word: replace(word.word) }));
     const selected = words ? accents(words.map(word => word.word)) : null;
@@ -258,7 +287,7 @@ export async function render({ input, output, settings, analysis = {}, ad, music
   let video = 'base';
   if (settings.subtitles && analysis.segments?.length) {
     await fs.writeFile(path.join(cwd, subtitle), buildSubtitles(analysis.segments, settings, width, pictureHeight));
-    filters += `;[${video}]ass=${subtitle}[captioned]`; video = 'captioned';
+    filters += `;[${video}]ass=${subtitle}:fontsdir=${filterPath(cwd, SUBTITLE_FONTS_DIR)}[captioned]`; video = 'captioned';
   }
   if (strip) { filters += `;[${video}]pad=${width}:${height}:0:0:color=0x101010[reserved]`; video = 'reserved'; }
   const insert = Boolean(ad?.file && position === 'insert');

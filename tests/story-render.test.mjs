@@ -38,8 +38,8 @@ test('phrase emphasis matches the whole phrase, including across subtitle cues',
   for (const subtitleStyle of ['Classic', 'Dynamic']) {
     const ass = renderer.buildSubtitles([{ start: 0, end: 4, text: text.join(' '), words }], renderer.normalizeSettings({ start: 0, end: 4, subtitleStyle, keywords: ['наша победа'] }, 4), 1080, 1920);
     assert.equal((ass.match(/\\c&H00DFFF&/g) || []).length, 2);
-    assert.match(ass, /\\b1\}наша\{\\r\}/);
-    assert.match(ass, /\\b1\}победа\{\\r\}/);
+    assert.match(ass, /\\c&H00DFFF&\}наша\{\\r\}/);
+    assert.match(ass, /\\c&H00DFFF&\}победа\{\\r\}/);
   }
 });
 

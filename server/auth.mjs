@@ -700,5 +700,14 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
     return true;
   }
 
-  return { handle, session, bots, flush: () => writeQueue };
+  // Read-only views for the account page: invited friends (names masked) and the account's own audit trail.
+  const maskName = name => { const value = String(name || '').trim(); return value ? `${[...value][0].toUpperCase()}***` : 'Друг'; };
+  function referrals(userId) {
+    const invited = accounts.filter(item => item.referredBy === userId).sort((a, b) => (Date.parse(a.createdAt) || 0) - (Date.parse(b.createdAt) || 0));
+    return { code: referralCode(userId), bonus: REFERRAL_BONUS, share: REFERRAL_SHARE, limit: MAX_REFERRALS,
+      invited: invited.map((item, index) => ({ name: maskName(item.name), joinedAt: item.createdAt || null, rewarded: index < MAX_REFERRALS })).reverse() };
+  }
+  const events = (userId, limit = 60) => structuredClone(state.events.filter(item => item.userId === userId).slice(-limit).reverse());
+
+  return { handle, session, bots, referrals, events, flush: () => writeQueue };
 }

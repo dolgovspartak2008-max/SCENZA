@@ -60,11 +60,11 @@ export function bannerBox(ad: Ad, format: Format, natural: { width: number; heig
 }
 
 type Props = {
-  ad: Ad | null; savedAd: Ad | null; setAd: (ad: Ad | null) => void; clip: number; format: Format; fileUrl: (id: string) => string; frameSource?: string;
+  ad: Ad | null; savedAd: Ad | null; needsBuild?: boolean; setAd: (ad: Ad | null) => void; clip: number; format: Format; fileUrl: (id: string) => string; frameSource?: string;
   working: boolean; onUpload: (file: File) => void; onSave: (ad: Ad) => void; onRemove: () => void;
 };
 
-export default function BannerEditor({ ad, savedAd, setAd, clip, format, fileUrl, frameSource, working, onUpload, onSave, onRemove }: Props) {
+export default function BannerEditor({ ad, savedAd, needsBuild = false, setAd, clip, format, fileUrl, frameSource, working, onUpload, onSave, onRemove }: Props) {
   const input = useRef<HTMLInputElement>(null), frame = useRef<HTMLCanvasElement>(null), probe = useRef<HTMLVideoElement>(null);
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
   const [replay, setReplay] = useState(0);
@@ -140,8 +140,8 @@ export default function BannerEditor({ ad, savedAd, setAd, clip, format, fileUrl
         <label>Плавное появление и исчезание · {ad.fade ?? 0} сек.<input type="range" min={0} max={round(Math.min(2, ad.duration / 2))} step={.1} value={ad.fade ?? 0} onChange={event => update({ fade: Number(event.target.value) })} /></label>
         <div className="ai-banner-quick"><button type="button" className="button outline" onClick={() => update({ offsetX: 0, offsetY: 0 })}>По центру</button><button type="button" className="button outline" onClick={() => mode('insert')}>На весь экран</button>{savedAd && <button type="button" className="text-link" disabled={!changed} onClick={() => setAd(savedAd)}>Отменить изменения</button>}</div>
         {insert && <p className="ai-note">Ролик остановится на {ad.start} сек., {ad.duration} сек. будет виден только баннер, затем видео продолжится с того же места. Итоговая длина — {round(clip + ad.duration)} сек.</p>}
-        <button type="button" className="button primary" disabled={working || !changed} onClick={() => onSave(sanitizeAd(ad, clip))}>{changed ? 'Сохранить баннер' : 'Баннер сохранён'}</button>
-        <p className="ai-note">Предпросмотр слева обновляется сразу и ничего не расходует. Баннер попадёт в итоговый MP4 при экспорте.</p>
+        <button type="button" className="button primary" disabled={working || !(changed || needsBuild)} onClick={() => onSave(sanitizeAd(ad, clip))}>{changed ? 'Сохранить и собрать видео' : needsBuild ? 'Собрать видео с баннером' : 'Видео с баннером готово'}</button>
+        <p className="ai-note">Предпросмотр слева обновляется сразу. После сохранения ролик пересобирается с баннером и появляется в плеере выше — его можно посмотреть и скачать. Токены не списываются.</p>
       </div>
     </div>
   </section>;

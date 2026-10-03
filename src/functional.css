@@ -110,3 +110,5 @@
   .library-heading { align-items: start; }
   .library-heading .button { padding: 10px; }
 }
+.app-header .header-notify { margin-left: auto; }
+.app-header .header-notify ~ .avatar { margin-left: 0; }
