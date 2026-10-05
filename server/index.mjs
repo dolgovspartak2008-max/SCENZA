@@ -35,6 +35,9 @@ const startsProcessing = (method, route) => method === 'POST' && (
   || /^\/api\/video\/projects\/[^/]+\/(?:complete|analyze|preview|revise|export|ad-preview|advertisement|music)$/.test(route)
   || /^\/api\/video\/jobs\/[^/]+\/retry$/.test(route)
 );
+// Routes that start paid AI work: a new source (its upload is analysed automatically), analysis, AI edits and retries.
+const usesAi = (method, route) => method === 'POST' && (['/api/video/projects', '/api/video/import'].includes(route) || /^\/api\/video\/projects\/[^/]+\/(?:analyze|revise)$/.test(route) || /^\/api\/video\/jobs\/[^/]+\/retry$/.test(route));
+const accessContact = () => (process.env.SCENA_ACCESS_TELEGRAM || '').trim().replace(/^@/, '') || 'SCENZA_BOT';
 const now = () => new Date().toISOString();
 const defaultEditor = (duration, format = '9:16') => ({ sceneId: '', start: 0, end: Math.min(duration, 30), format, cropX: 50, muted: false, subtitleText: '', subtitleStyle: 'classic', banner: null });
 
@@ -121,7 +124,7 @@ export async function createServer({ dataDir = process.env.SCENA_DATA_DIR || pat
     await tokenLedger.grant(userId, bonus, 'referral', `referral-${userId}`, 'Бонус за регистрацию по приглашению');
     await tokenLedger.grant(inviterId, bonus, 'referral', `referral-${userId}-inviter`, 'Бонус за приглашённого друга');
   };
-  const auth = authOptions === null ? null : await createAuth({ allowedOrigins: ['http://127.0.0.1:5173', 'http://localhost:5173'], telegramMembership: createTelegramMembership({ botToken: authOptions.telegramBotToken || process.env.SCENA_BOT_TOKEN }), tokenLedger, onRegister: referralBonus, ...authOptions, dataDir: path.join(dataDir, 'auth') });
+  const auth = authOptions === null ? null : await createAuth({ allowedOrigins: ['http://127.0.0.1:5173', 'http://localhost:5173'], telegramMembership: createTelegramMembership({ botToken: authOptions.telegramBotToken || process.env.SCENA_BOT_TOKEN }), tokenLedger, onRegister: referralBonus, accessContact: accessContact(), ...authOptions, dataDir: path.join(dataDir, 'auth') });
   const accountStudios = new Map();
   const notificationState = createNotificationState(dataDir);
   let videoApi;
@@ -414,7 +417,7 @@ export async function createServer({ dataDir = process.env.SCENA_DATA_DIR || pat
       if (method === 'OPTIONS') { response.writeHead(204); response.end(); return; }
       if (method === 'GET' && route === '/api/health/ready') { send({ ok: true }); return; }
       if (auth) {
-        if (method === 'GET' && route === '/api/auth/session') { send({ user: auth.session(request), localStudioAllowed: allowLocalStudio }); return; }
+        if (method === 'GET' && route === '/api/auth/session') { send({ user: auth.session(request), localStudioAllowed: allowLocalStudio, accessContact: accessContact() }); return; }
         if (await auth.handle(request, response, route)) return;
         const account = auth.session(request);
         if (account) {
@@ -431,6 +434,28 @@ export async function createServer({ dataDir = process.env.SCENA_DATA_DIR || pat
             const items = buildNotifications({ tokens, projects, support, events: auth.events(account.id), title: project => projectTitle(numbers.get(project.id) || 1) })
               .map(item => ({ ...item, unread: !readAt || item.createdAt > readAt }));
             send({ items, unread: items.filter(item => item.unread).length }); return;
+          }
+          if (route === '/api/account/avatar') {
+            // Each upload is re-encoded to a 256×256 JPEG, so only pixels are kept: no metadata, no foreign formats.
+            const avatarFile = path.join(dataDir, 'avatars', `${account.id}.jpg`);
+            if (method === 'GET' || method === 'HEAD') {
+              const data = await fs.readFile(avatarFile).catch(() => null);
+              if (!data) throw fail('Аватар не загружен.', 404);
+              response.writeHead(200, { 'Content-Type': 'image/jpeg', 'Content-Length': data.length, 'Cache-Control': 'private, no-cache', 'X-Content-Type-Options': 'nosniff' });
+              response.end(method === 'HEAD' ? undefined : data); return;
+            }
+            if (method === 'DELETE') { await fs.rm(avatarFile, { force: true }); send({ avatar: null }); return; }
+            if (method !== 'POST') throw fail('Метод не поддерживается.', 405);
+            if (!/^image\/(?:png|jpeg|webp)$/.test(request.headers['content-type'] || '')) throw fail('Выберите изображение JPG, PNG или WebP.', 415);
+            await fs.mkdir(path.dirname(avatarFile), { recursive: true });
+            const upload = `${avatarFile}.${randomUUID()}.upload`, converted = `${avatarFile}.${randomUUID()}.jpg`;
+            try {
+              await saveStream(request, upload, 5 * 1024 ** 2);
+              try { await ff(['-f', 'image2pipe', '-i', upload, '-frames:v', '1', '-vf', 'scale=256:256:force_original_aspect_ratio=increase,crop=256:256,format=yuvj420p', '-map_metadata', '-1', '-q:v', '3', converted], null, { timeout: 30000 }); }
+              catch { throw fail('Не удалось прочитать изображение. Выберите другой файл JPG, PNG или WebP.', 422); }
+              await fs.rename(converted, avatarFile);
+            } finally { await Promise.all([fs.rm(upload, { force: true }), fs.rm(converted, { force: true })]); }
+            send({ avatar: `/api/account/avatar?v=${Date.now()}` }); return;
           }
           if (route === '/api/account/referrals') {
             if (method !== 'GET') throw fail('Метод не поддерживается.', 405);
@@ -456,6 +481,7 @@ export async function createServer({ dataDir = process.env.SCENA_DATA_DIR || pat
             if (account.blocked) throw fail(`Создание роликов заблокировано. Причина: ${account.blockReason || 'обратитесь в поддержку'}. Вход и ваши данные доступны.`, 403);
             await admin.assertGenerationAllowed();
           }
+          if (usesAi(method, route) && !account.aiAccess) throw Object.assign(fail(`ИИ-обработка доступна только с разрешения владельца SCENZA. Напишите в Telegram @${accessContact()}, чтобы получить доступ.`, 403), { code: 'AI_ACCESS_REQUIRED' });
           if (!account.accessActive && !['GET', 'HEAD'].includes(method)) throw fail('Доступ к обработке не активен. Войдите на сайт, чтобы получить стартовые токены, или обратитесь в поддержку.', 402);
           if (await handleVideo(request, response, account.id)) return;
           if (!accountStudios.has(account.id)) {

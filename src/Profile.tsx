@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Check, Coins, Copy, Gift, Send, Share2, UserRound, Users } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Camera, Check, Coins, Copy, Gift, Send, Share2, Trash2, UserRound, Users } from 'lucide-react';
 import { request } from './api';
 import { authRequest } from './landing/auth';
 import type { Account } from './landing/auth';
@@ -28,6 +28,10 @@ export default function Profile({ tab, navigate, notify }: { tab: ProfileTab; na
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const notifications = useNotifications();
+  // The server answers 404 when there is no photo; the image error then falls back to the initial.
+  const [avatar, setAvatar] = useState<string | null>('/api/account/avatar');
+  const [avatarBusy, setAvatarBusy] = useState(false);
+  const avatarInput = useRef<HTMLInputElement>(null);
   const load = useCallback(async () => {
     try {
       const session = await request<{ user: Account | null }>('/api/auth/session');
@@ -52,6 +56,21 @@ export default function Profile({ tab, navigate, notify }: { tab: ProfileTab; na
     if (!navigator.share) { void copy(); return; }
     await navigator.share({ title: 'SCENZA', text: `Делаю короткие ролики с AI в SCENZA. По моей ссылке +${referrals?.bonus ?? 20} токенов при регистрации:`, url: link }).catch(() => undefined);
   }
+  async function changeAvatar(file: File) {
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type) || !file.size || file.size > 5 * 1024 ** 2) { notify('Выберите фото JPG, PNG или WebP до 5 МБ.'); return; }
+    setAvatarBusy(true);
+    try {
+      const result = await request<{ avatar: string }>('/api/account/avatar', { method: 'POST', headers: { 'Content-Type': file.type }, body: file });
+      setAvatar(result.avatar); window.dispatchEvent(new CustomEvent('scenza:avatar', { detail: result.avatar })); notify('Фото профиля обновлено.');
+    } catch (problem) { notify(problem instanceof Error ? problem.message : 'Не удалось загрузить фото.'); }
+    finally { setAvatarBusy(false); }
+  }
+  async function removeAvatar() {
+    setAvatarBusy(true);
+    try { await request('/api/account/avatar', { method: 'DELETE' }); setAvatar(null); window.dispatchEvent(new CustomEvent('scenza:avatar', { detail: null })); notify('Фото профиля удалено.'); }
+    catch (problem) { notify(problem instanceof Error ? problem.message : 'Не удалось удалить фото.'); }
+    finally { setAvatarBusy(false); }
+  }
   async function redeem() {
     if (!promo.trim()) return;
     setBusy(true);
@@ -68,7 +87,9 @@ export default function Profile({ tab, navigate, notify }: { tab: ProfileTab; na
     <div className="profile-tabs" role="tablist" aria-label="Разделы профиля">{tabs.map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={tab === value} className={tab === value ? 'is-active' : ''} onClick={() => navigate(value === 'overview' ? '/profile' : `/profile?tab=${value}`)}>{label}{value === 'notifications' && !!notifications.feed?.unread && <span className="profile-tab-badge">{notifications.feed.unread}</span>}</button>)}</div>
 
     {tab === 'overview' && account && <div className="profile-grid" role="tabpanel">
-      <section className="panel profile-card profile-account"><span className="profile-avatar" aria-hidden="true">{(account.name || account.email || 'S').slice(0, 1).toUpperCase()}</span><div><h2>{account.name || 'Пользователь'}</h2>{account.email && <p>{account.email}</p>}<p className="profile-muted">С нами с {day(account.createdAt)}</p></div>
+      <section className="panel profile-card profile-account"><div className="profile-avatar-box"><button type="button" className="profile-avatar" disabled={avatarBusy} aria-label={avatar ? 'Сменить фото профиля' : 'Добавить фото профиля'} onClick={() => avatarInput.current?.click()}>{avatar ? <img src={avatar} alt="" onError={() => setAvatar(null)} /> : <span aria-hidden="true">{(account.name || account.email || 'S').slice(0, 1).toUpperCase()}</span>}<i aria-hidden="true"><Camera size={14} /></i></button>
+        <input ref={avatarInput} type="file" hidden accept="image/png,image/jpeg,image/webp" onChange={event => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void changeAvatar(file); }} />
+        {avatar && <button type="button" className="profile-avatar-remove" disabled={avatarBusy} onClick={() => void removeAvatar()}><Trash2 size={13} aria-hidden="true" />Удалить</button>}</div><div><h2>{account.name || 'Пользователь'}</h2>{account.email && <p>{account.email}</p>}<p className="profile-muted">С нами с {day(account.createdAt)}</p></div>
         <dl><div><dt>Вход</dt><dd>{account.provider === 'telegram' ? 'Telegram' : 'Email'}</dd></div><div><dt>Telegram</dt><dd>{account.telegramUserId ? <><Send size={14} aria-hidden="true" /> привязан{account.telegramUsername ? ` · @${account.telegramUsername}` : ''}</> : <a href="https://t.me/SCENZA_BOT" target="_blank" rel="noopener noreferrer">Привязать</a>}</dd></div><div><dt>Доступ</dt><dd>{account.blocked ? 'Обработка приостановлена' : account.accessActive ? account.accessSource === 'trial' || !account.accessSource ? 'Бесплатный старт' : `Активен${account.accessUntil ? ` до ${day(account.accessUntil)}` : ''}` : 'Не активен'}</dd></div></dl>
         {account.blocked && <p className="profile-warning" role="status">Создание роликов приостановлено: {account.blockReason || 'обратитесь в поддержку.'}</p>}
       </section>

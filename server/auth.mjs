@@ -38,7 +38,7 @@ async function jsonBody(request) {
   } catch { throw fail('Некорректный запрос.'); }
 }
 
-export async function createAuth({ dataDir, telegramClientId = '', telegramBotUsername = '', telegramMembership, emailDelivery, emailAuth, accountStore, legalReady = false, botRegistrationEnabled = false, ownerTelegramIds = [], secureCookies = false, trustProxy = false, allowedOrigins = [], now = Date.now, fetch: fetcher = globalThis.fetch, tokenLedger, onRegister }) {
+export async function createAuth({ dataDir, telegramClientId = '', telegramBotUsername = '', telegramMembership, emailDelivery, emailAuth, accountStore, legalReady = false, botRegistrationEnabled = false, ownerTelegramIds = [], accessContact = '', secureCookies = false, trustProxy = false, allowedOrigins = [], now = Date.now, fetch: fetcher = globalThis.fetch, tokenLedger, onRegister }) {
   if (!dataDir) throw new Error('Auth dataDir is required');
   await fs.mkdir(dataDir, { recursive: true, mode: 0o700 });
   const accountsFile = path.join(dataDir, 'accounts.json');
@@ -126,7 +126,9 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
     const extended = Date.parse(user.accessUntil) || 0;
     // The free start is a token grant (see ai/tokens.mjs), not a time limit: once started, access never expires by date.
     const started = !!user.trialStartedAt;
-    return { id: user.id, ...(user.email ? { email: user.email } : {}), ...(user.telegramUserId ? { telegramUserId: user.telegramUserId } : {}), name: user.name, provider: user.provider, createdAt: user.createdAt || null, lastActiveAt: user.lastActiveAt || null, telegramUsername: user.telegramUsername || null, blockReason: user.blockReason || null, role: user.role === 'support' ? 'support' : 'user', blocked: user.blocked === true, trialStartedAt: user.trialStartedAt, trialEndsAt: user.trialEndsAt, accessUntil: extended ? new Date(extended).toISOString() : null, accessSource: extended > now() ? user.accessSource || 'grant' : started ? 'trial' : 'none', accessActive: started || now() < extended, referralCode: referralCode(user.id), referrals: accounts.filter(item => item.referredBy === user.id).length };
+    return { id: user.id, ...(user.email ? { email: user.email } : {}), ...(user.telegramUserId ? { telegramUserId: user.telegramUserId } : {}), name: user.name, provider: user.provider, createdAt: user.createdAt || null, lastActiveAt: user.lastActiveAt || null, telegramUsername: user.telegramUsername || null, blockReason: user.blockReason || null, role: user.role === 'support' ? 'support' : 'user', blocked: user.blocked === true, trialStartedAt: user.trialStartedAt, trialEndsAt: user.trialEndsAt, accessUntil: extended ? new Date(extended).toISOString() : null, accessSource: extended > now() ? user.accessSource || 'grant' : started ? 'trial' : 'none', accessActive: started || now() < extended, referralCode: referralCode(user.id), referrals: accounts.filter(item => item.referredBy === user.id).length,
+      // AI work needs the owner's permission: the owner account, or access the owner granted (grant, promo, purchase).
+      aiAccess: owners.has(telegramId(user.telegramUserId)) || now() < extended };
   }
 
   function session(request) {
@@ -626,7 +628,7 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
     try {
       let result;
       if (request.method === 'GET' && route === '/api/auth/config') result = { emailEnabled, emailCodeLength, telegramEnabled, telegramBotEnabled, telegramClientId: telegramEnabled ? clientId : '', legalReady, botRegistrationEnabled, legalVersion: VERSION, requiredTelegramChannel: 'https://t.me/MediaFlowTech' };
-      else if (request.method === 'GET' && route === '/api/auth/session') result = { user: session(request) };
+      else if (request.method === 'GET' && route === '/api/auth/session') result = { user: session(request), accessContact };
       else {
         if (request.method !== 'POST') throw fail('Метод не поддерживается.', 405);
         if (request.headers['sec-fetch-site'] === 'cross-site') throw fail('Запрос с другого сайта запрещён.', 403);

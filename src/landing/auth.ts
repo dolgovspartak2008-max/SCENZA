@@ -16,7 +16,7 @@ export function validateAuth(input: AuthInput & { requireName?: boolean }): Auth
   };
 }
 export type AuthMode = 'login' | 'register' | 'reset';
-export type Account = { id: string; email?: string; telegramUserId?: string; name: string; provider: string; trialStartedAt: string | null; trialEndsAt: string | null; accessUntil?: string | null; accessSource?: string; accessActive: boolean; blocked?: boolean; blockReason?: string | null; createdAt?: string | null; lastActiveAt?: string | null; telegramUsername?: string | null; role?: 'user' | 'support'; referralCode?: string; referrals?: number };
+export type Account = { id: string; email?: string; telegramUserId?: string; name: string; provider: string; trialStartedAt: string | null; trialEndsAt: string | null; accessUntil?: string | null; accessSource?: string; accessActive: boolean; blocked?: boolean; blockReason?: string | null; createdAt?: string | null; lastActiveAt?: string | null; telegramUsername?: string | null; role?: 'user' | 'support'; referralCode?: string; referrals?: number; aiAccess?: boolean };
 export type AuthConfig = { emailEnabled: boolean; emailCodeLength?: 6 | 8; telegramEnabled: boolean; telegramClientId: string; telegramBotEnabled?: boolean; legalReady: boolean; botRegistrationEnabled?: boolean; requiredTelegramChannel?: string };
 export type AuthResult = { user?: Account; verificationRequired?: boolean; challengeId?: string; telegramRequired?: boolean; telegramVerified?: boolean; url?: string; expiresAt?: number };
 export type Consent = { termsAccepted: boolean; dataConsent: boolean; remember: boolean };

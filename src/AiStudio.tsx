@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { request } from './api';
+import { authRequest } from './landing/auth';
+import type { Account } from './landing/auth';
 import { Icon } from './Icon';
 import { CloudUpload } from 'lucide-react';
 import StudioWelcome from './StudioWelcome';
@@ -62,6 +64,9 @@ export default function AiStudio({ projectId, list=false, navigate, notify }: {p
   const [zones,setZones]=useState<Platform|''>('');
   const [estimate,setEstimate]=useState<{file:File;seconds:number;tokens:number}|null>(null);
   const [usage,setUsage]=useState<Usage|null>(null);
+  // Signed-in users need the owner's permission for AI work; the local studio on the owner's computer has no account.
+  const [aiContact,setAiContact]=useState<string|null>(null);
+  useEffect(()=>{void authRequest<{user:Account|null;accessContact?:string}>('session').then(value=>setAiContact(value.user&&!value.user.aiAccess?value.accessContact||'SCENZA_BOT':null)).catch(()=>setAiContact(null));},[]);
   const [showCandidates,setShowCandidates]=useState(false);
   const [filter,setFilter]=useState('all'),[revision,setRevision]=useState(''),[ready,setReady]=useState<boolean|null>(null),[ad,setAd]=useState<Ad|null>(null);
   const input=useRef<HTMLInputElement>(null),controller=useRef<AbortController|null>(null);
@@ -172,6 +177,7 @@ export default function AiStudio({ projectId, list=false, navigate, notify }: {p
     })}</div>{!projects.length&&<p className="loading-panel">Здесь появятся ваши проекты. Начните с загрузки видео.</p>}</>:
     <>
       {(welcome||project?.status==='UPLOADING')&&<StudioWelcome>
+        {aiContact&&!project?<section className="ai-upload ai-locked" role="status"><h2>ИИ — по разрешению</h2><p>Обработка видео с ИИ открывается вручную. Напишите в Telegram, и мы откроем доступ к вашему аккаунту.</p><a className="button primary" href={`https://t.me/${aiContact}`} target="_blank" rel="noopener noreferrer">Попросить доступ · @{aiContact}</a></section>:<>
         <section className="ai-upload" onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const file=e.dataTransfer.files[0];if(file)void choose(file);}}>
           <CloudUpload size={54} strokeWidth={1.5}/><h2>{project?'Продолжите загрузку':'Перетащите видео сюда'}</h2><p>{project?`Выберите тот же файл: ${project.upload.name}`:'или нажмите кнопку ниже'}</p>
           <input ref={input} type="file" accept="video/*,.mkv,.m4v" hidden onChange={e=>{const file=e.target.files?.[0];if(file)void choose(file);e.target.value='';}}/>
@@ -179,7 +185,7 @@ export default function AiStudio({ projectId, list=false, navigate, notify }: {p
           {uploadProgress!==null&&busy&&<button className="text-link" onClick={()=>controller.current?.abort()}>Приостановить загрузку</button>}
           {estimate&&usage?.tokens!==undefined&&<div className={`ai-estimate ${estimate.tokens>usage.tokens?'is-short':''}`} role="status"><strong>Видео {formatTime(estimate.seconds)} = {estimate.tokens} {tokenWord(estimate.tokens)}</strong><span>1 токен — каждая начатая минута исходного видео.</span><span>На балансе: {usage.tokens}. {estimate.tokens>usage.tokens?`Не хватает ${estimate.tokens-usage.tokens}.`:`После анализа останется ${usage.tokens-estimate.tokens}.`}</span><div className="ai-actions">{estimate.tokens>usage.tokens?<a className="button primary" href="/#pricing">Пополнить токены</a>:<button type="button" className="button primary" onClick={()=>{const file=estimate.file;setEstimate(null);void upload(file);}}>Загрузить и списать {estimate.tokens}</button>}<button type="button" className="button outline" onClick={()=>setEstimate(null)}>Выбрать другое видео</button></div></div>}
         </section>
-        <details className="studio-import"><summary><Icon name="link" size={16}/>Загрузить по ссылке</summary><form className="ai-url" onSubmit={e=>{e.preventDefault();void importSource();}}><label>Или прямая ссылка на видео<input type="url" value={source} onChange={e=>setSource(e.target.value)} placeholder="https://example.com/video.mp4" required disabled={busy}/></label><button className="button outline" disabled={busy||!source.trim()}>Загрузить по ссылке</button></form><p className="ai-note">Если загрузка прервётся, выберите тот же файл для продолжения.</p></details>
+        <details className="studio-import"><summary><Icon name="link" size={16}/>Загрузить по ссылке</summary><form className="ai-url" onSubmit={e=>{e.preventDefault();void importSource();}}><label>Или прямая ссылка на видео<input type="url" value={source} onChange={e=>setSource(e.target.value)} placeholder="https://example.com/video.mp4" required disabled={busy}/></label><button className="button outline" disabled={busy||!source.trim()}>Загрузить по ссылке</button></form><p className="ai-note">Если загрузка прервётся, выберите тот же файл для продолжения.</p></details></>}
       </StudioWelcome>}
       {project&&project.status!=='UPLOADING'&&<>
         <section className={`panel ai-status ${processingFailed?'ai-status-error':''}`}>
@@ -202,7 +208,7 @@ export default function AiStudio({ projectId, list=false, navigate, notify }: {p
         </section>}
       </>}
     </>}
-    {!list&&project&&progress&&<section className={`ai-progress-dock ${project.status==='FAILED'?'is-failed':''}`} aria-label="Ход обработки видео">
+    {!list&&project&&progress&&<section className={`ai-progress-dock ${project.status==='FAILED'?'is-failed':''} ${running.includes(project.status)||project.status==='UPLOADING'?'':'is-idle'}`} aria-label="Ход обработки видео">
       <div className="ai-progress-meta"><div><strong>{progress.label}</strong><span>{project.status==='FAILED'?'Повторите обработку, чтобы продолжить.':progress.value===null?'Сервис не сообщает точный процент этого этапа.':progress.value===100?'Готово':progress.estimated?`Осталось примерно ${100-progress.value}% · время зависит от видео`:`Осталось ${100-progress.value}%${project.status==='UPLOADING'?' загрузки':' этапа'}`}</span></div><b>{progress.value===null?'—':`${progress.estimated?'≈ ':''}${progress.value}%`}</b></div>
       {project.status==='FAILED'?<div className="ai-progress-stopped"/>:<progress aria-label={progress.label} value={progress.value??undefined} max={100}/>}
       <ol className="ai-progress-steps"><li className={project.status!=='UPLOADING'?'is-done':'is-current'}><Icon name={project.status!=='UPLOADING'?'check':'upload'} size={14}/>Загрузка</li><li className={['READY','RENDERING','AWAITING_APPROVAL','APPROVED','ADDING_AD','EXPORTING','COMPLETED'].includes(project.status)?'is-done':['PREPROCESSING','TRANSCRIBING','ANALYZING'].includes(project.status)?'is-current':''}><Icon name="film" size={14}/>Анализ</li><li className={currentVersion?'is-done':project.status==='RENDERING'?'is-current':''}><Icon name="clip" size={14}/>Ролик</li><li className={project.status==='COMPLETED'?'is-done':project.status==='EXPORTING'?'is-current':''}><Icon name="download" size={14}/>Экспорт</li></ol>

@@ -79,6 +79,11 @@
 .ai-progress-dock progress:indeterminate::-webkit-progress-bar { background:transparent; }
 .ai-progress-stopped { height:6px; margin:12px 0; background:#604044; border-radius:5px; }
 .ai-progress-dock.is-failed { border-color:#694444; }
+/* Without the owner's permission the upload area explains where to ask instead. */
+.studio-welcome .ai-locked h2 { font-size:20px; }
+.studio-welcome .ai-locked p { max-width:420px; color:#a1b6c3; line-height:1.6; }
+/* Once nothing is running the dock no longer floats over the editor controls. */
+.ai-progress-dock.is-idle { position:static; margin-top:24px; box-shadow:none; }
 .ai-progress-dock.is-failed b { color:#ffad9e; }
 .ai-progress-steps { display:flex; justify-content:space-between; gap:10px; }
 .ai-progress-steps li { display:flex; align-items:center; gap:6px; font-size:11px; color:#90afbc; }
