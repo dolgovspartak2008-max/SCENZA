@@ -32,6 +32,9 @@ const adminJob = row => {
   const lease = typeof row.lease_until === 'number' ? row.lease_until : Date.parse(row.lease_until);
   return { ...job, stalled: row.status === 'running' ? !lease || lease <= Date.now() : row.status === 'queued' && Date.parse(row.updated_at) < Date.now() - leaseMs };
 };
+// Background alert checks need only these job fields — never project payloads or job payload/result.
+const alertJobColumns = 'id,owner_id,project_id,type,status,stage,progress,attempts,error,lease_until,created_at,updated_at';
+const alertSince = since => new Date(since ?? Date.now() - 15 * 60000).toISOString();
 const adminProject = project => ({ id: project.id, ownerId: project.ownerId, status: project.status, duration: project.duration || 0, createdAt: project.createdAt, updatedAt: project.updatedAt, analyzedAt: project.analyzedAt || null, model: project.analysisModel || null, editRequests: Object.keys(project.editCache || {}).length, clips: [...(project.candidates || []).filter(item => item.ready), ...(project.exports || (project.finalFile ? [{ createdAt: project.updatedAt }] : []))].map(item => ({ createdAt: item.createdAt || project.createdAt })) });
 // Token ledger entries share the append-only usage table: 1 token = 1 minute of source video, grants are positive, charges negative.
 const tokenReasons = ['trial', 'purchase', 'grant', 'referral', 'promo', 'analysis', 'refund', 'bonus'];
@@ -106,6 +109,13 @@ export async function createStore({ dataDir, env = process.env }) {
   return {
     async adminSnapshot() {
       return { projects: db.prepare('SELECT payload FROM projects').all().map(row => adminProject(decode(row.payload))), jobs: db.prepare('SELECT * FROM jobs ORDER BY updated_at DESC').all().map(adminJob), usage: db.prepare('SELECT payload FROM ai_usage').all().map(row => decode(row.payload)) };
+    },
+    async alertSnapshot({ since } = {}) {
+      const cutoff = alertSince(since);
+      return {
+        jobs: db.prepare(`SELECT ${alertJobColumns} FROM jobs WHERE status IN ('queued','running') OR (status='error' AND updated_at>?) ORDER BY updated_at DESC`).all(cutoff).map(adminJob),
+        usage: db.prepare("SELECT payload FROM ai_usage WHERE json_extract(payload,'$.error') IS NOT NULL AND json_extract(payload,'$.createdAt')>?").all(cutoff).map(row => decode(row.payload)),
+      };
     },
     async recordAiUsage(value) { const record = usageValue(value); db.prepare('INSERT OR IGNORE INTO ai_usage(id,payload) VALUES(?,?)').run(record.id, JSON.stringify(record)); },
     async ownerTokens(ownerId) { return db.prepare("SELECT payload FROM ai_usage WHERE json_extract(payload,'$.ownerId')=? AND json_extract(payload,'$.kind')='token' ORDER BY json_extract(payload,'$.createdAt')").all(identity(ownerId)).map(row => decode(row.payload)); },
@@ -223,10 +233,10 @@ function supabaseStore(env) {
   const query = (table, values) => `${table}?${new URLSearchParams(values)}`;
   const rpcJob = async (name, body) => { const rows = await request(`rpc/scenza_video_${name}`, body); return toJob(Array.isArray(rows) ? rows[0] : rows); };
   const checkedJob = async (name, body, message) => { const job = await rpcJob(name, body); if (!job) throw new Error(message); return job; };
-  const allRows = async (table, select) => {
+  const allRows = async (table, select, filters = {}) => {
     const rows = [];
     for (let offset = 0; ; offset += 500) {
-      const page = await request(query(table, { select, order: 'id.asc', limit: '500', offset: String(offset) }));
+      const page = await request(query(table, { select, ...filters, order: 'id.asc', limit: '500', offset: String(offset) }));
       rows.push(...page);
       if (page.length < 500) return rows;
     }
@@ -236,6 +246,15 @@ function supabaseStore(env) {
       let usageUnavailable = false;
       const [projects, jobs, usage] = await Promise.all([allRows('scenza_video_projects', 'id,payload'), allRows('scenza_video_jobs', '*'), allRows('scenza_ai_usage', 'id,payload').catch(error => { if (error.code !== 'VIDEO_TABLE_MISSING') throw error; usageUnavailable = true; return []; })]);
       return { projects: projects.map(row => adminProject(row.payload)), jobs: jobs.map(adminJob), usage: usage.map(row => row.payload), usageUnavailable };
+    },
+    async alertSnapshot({ since } = {}) {
+      const cutoff = alertSince(since);
+      let usageUnavailable = false;
+      const [jobs, usage] = await Promise.all([
+        allRows('scenza_video_jobs', alertJobColumns, { or: `(status.in.(queued,running),and(status.eq.error,updated_at.gt."${cutoff}"))` }),
+        allRows('scenza_ai_usage', 'id,payload', { 'payload->>error': 'not.is.null', 'payload->>createdAt': `gt.${cutoff}` }).catch(error => { if (error.code !== 'VIDEO_TABLE_MISSING') throw error; usageUnavailable = true; return []; }),
+      ]);
+      return { jobs: jobs.map(adminJob), usage: usage.map(row => row.payload), usageUnavailable };
     },
     async recordAiUsage(value) { const record = usageValue(value); await request('rpc/scenza_video_record_usage', { p_id: record.id, p_payload: record }); },
     async ownerTokens(ownerId) {

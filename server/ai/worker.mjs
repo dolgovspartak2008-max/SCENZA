@@ -28,7 +28,9 @@ export function capcutGuide({ settings, ad, subtitles, music }) {
   return ['SCENZA → CapCut', '', ...steps.map((step, index) => `${index + 1}. ${step}`), '', 'SCENZA → Premiere Pro и DaVinci Resolve', '', ...other.map((step, index) => `${index + 1}. ${step}`)].join('\r\n') + '\r\n';
 }
 const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
-export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || path.join(workspace,'.scena'), env = process.env, provider, python } = {}) {
+// Empty-queue polling: 10 s, then 20 s, then every 30 s until a job appears. A found job is followed by the next claim at once.
+const idleDelays = [10000, 20000, 30000];
+export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || path.join(workspace,'.scena'), env = process.env, provider, python, sleep = delay } = {}) {
   const root=path.join(dataDir,'ai'), cache=path.join(root,'cache'); await fs.mkdir(cache,{recursive:true});
   let usageJob, usageWarning = false;
   const store=await createStore({dataDir:root,env}), storage=createStorage({dataDir:root,env});
@@ -253,17 +255,18 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
   return {
     async once(){const job=await store.claimJob(workerId);if(!job)return false;await processJob(job);return true;},
     async start(){
-      let unavailable=false;
+      let unavailable=false,idle=0;
       try {
         while(!stopping){
           try {
             const worked=await this.once();
             if(unavailable){console.log('SCENZA: связь с очередью восстановлена.');unavailable=false;}
-            if(!worked&&!stopping)await delay(2500);
+            if(worked)idle=0;
+            else if(!stopping)await sleep(idleDelays[Math.min(idle++,idleDelays.length-1)]);
           } catch(error) {
             if(![408,429,502,503,504].includes(error.status))throw error;
             if(!unavailable)console.warn('SCENZA: очередь временно недоступна. Повторяем подключение.');
-            unavailable=true;if(!stopping)await delay(5000);
+            unavailable=true;if(!stopping)await sleep(5000);
           }
         }
       }finally{await store.close();}

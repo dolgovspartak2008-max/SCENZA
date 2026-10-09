@@ -38,6 +38,8 @@ export async function createAdminService({ auth, dataDir, getVideoApi, now = Dat
   const owner = async actor => { if (await auth.bots.adminRole(actor) !== 'owner') throw fail('Доступ только для владельца.', 403); };
   const accounts = actor => auth.bots.adminSnapshot(actor);
   const video = async () => (await getVideoApi()).store.adminSnapshot();
+  // The minute-by-minute Telegram check reads only active/fresh-failed jobs and fresh AI errors, never project payloads.
+  const videoAlerts = async since => { const { store } = await getVideoApi(); return store.alertSnapshot ? store.alertSnapshot({ since }) : store.adminSnapshot(); };
   // The alert names the actual failure so the owner knows whether to wake the database, apply the migration or fix the key.
   const databaseReason = error => {
     const code = error?.code || '';
@@ -197,7 +199,7 @@ export async function createAdminService({ auth, dataDir, getVideoApi, now = Dat
       else if (key.keyStatus === 'disabled') alerts.push({ key: 'ai:key:disabled', text: 'SCENZA: OpenRouter отклонил доступ к текущему API-ключу (HTTP 401/403). Проверьте активность ключа и ограничения доступа.' });
       else if (key.keyStatus === 'unavailable') alerts.push({ key: 'ai:key:unavailable', text: 'SCENZA: проверка лимита OpenRouter API недоступна. Проверьте состояние API и соединение сервера.' });
       try {
-        const data = await video();
+        const data = await videoAlerts(new Date(now() - 15 * 60000).toISOString());
         for (const job of data.jobs) {
           if (job.stalled) alerts.push({ key: `job:stalled:${job.type}`, text: `SCENZA: зависшая задача ${job.id}.\nЭтап: ${job.stage}.\nПроверьте раздел «Генерации».` });
           else if (job.status === 'error' && job.stage !== 'cancelled' && Date.parse(job.updatedAt) > now() - 15 * 60000 && /AI|OpenRouter|API|worker|ffmpeg|прерван|недоступ|сервер|timeout|failed/i.test(job.error || '')) alerts.push({ key: `job:error:${job.type}:${String(job.error).slice(0, 500)}`, text: `SCENZA: ошибка обработки ${job.id}.\n${String(job.error).slice(0, 1500)}` });
