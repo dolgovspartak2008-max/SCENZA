@@ -37,7 +37,15 @@ export async function createAdminService({ auth, dataDir, getVideoApi, now = Dat
   }
   const owner = async actor => { if (await auth.bots.adminRole(actor) !== 'owner') throw fail('Доступ только для владельца.', 403); };
   const accounts = actor => auth.bots.adminSnapshot(actor);
-  const video = async () => (await getVideoApi()).store.adminSnapshot();
+  // Panel taps reuse one snapshot for 15 s instead of re-downloading every project from the database.
+  let videoCache = null, videoLoading = null;
+  const video = async () => {
+    if (videoCache && videoCache.until > now()) return videoCache.value;
+    videoLoading ||= (async () => (await getVideoApi()).store.adminSnapshot())()
+      .then(value => { videoCache = { value, until: now() + 15000 }; return value; })
+      .finally(() => { videoLoading = null; });
+    return videoLoading;
+  };
   // The minute-by-minute Telegram check reads only active/fresh-failed jobs and fresh AI errors, never project payloads.
   const videoAlerts = async since => { const { store } = await getVideoApi(); return store.alertSnapshot ? store.alertSnapshot({ since }) : store.adminSnapshot(); };
   // The alert names the actual failure so the owner knows whether to wake the database, apply the migration or fix the key.
@@ -129,6 +137,7 @@ export async function createAdminService({ auth, dataDir, getVideoApi, now = Dat
     async jobAction(actor, id, action) {
       await owner(actor); if (action === 'retry') service.assertGenerationAllowed();
       const result = await (await getVideoApi()).store.adminJobAction(id, action);
+      videoCache = null;
       await mutate(next => { event(next, `job.${action}`, { jobId: id }); return true; }); return result;
     },
     async aiUsage(actor) { await owner(actor); const [data, key] = await Promise.all([video().catch(() => null), currentKey()]); return { ...usageSummary(data || {}), ...(!data ? { note: 'База видеозадач недоступна; исторические показатели AI прочитать не удалось.' } : {}), ...key, dataUnavailable: !data, keyNote: 'Остаток лимита текущего API-ключа в USD; общий баланс аккаунта API неизвестен. Обновляется не чаще раза в 5 минут.' }; },

@@ -54,6 +54,8 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
   }
   async function api(type, method, body = {}, signal) {
     if (!tokens[type]) throw new Error(`Telegram ${type}: токен не настроен.`);
+    // Once something new is posted, later replies must follow it, not jump back into the older menu.
+    if (method === 'sendMessage' || method === 'sendPhoto') editTarget = null;
     try {
       const response = await fetcher(`https://api.telegram.org/bot${tokens[type]}/${method}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -66,6 +68,7 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
         error.telegramCode = Number(data.error_code) || response.status || 0;
         error.telegramMethod = method;
         error.callbackExpired = method === 'answerCallbackQuery' && data.error_code === 400 && /query is too old|query id is invalid|query_id_invalid|response timeout expired/i.test(String(data.description));
+        error.notModified = method === 'editMessageText' && /message is not modified/i.test(String(data.description));
         error.retryAfter = Math.max(1, Math.min(60, Number(data.parameters?.retry_after) || 1));
         throw error;
       }
@@ -78,7 +81,22 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
       throw safe;
     }
   }
-  const send = (type, id, text, rows = []) => api(type, 'sendMessage', { chat_id: id, text: text.slice(0, 4000), ...(rows.length ? { reply_markup: { inline_keyboard: rows } } : {}) });
+  const payload = (text, rows = []) => ({ text: text.slice(0, 4000), ...(rows.length ? { reply_markup: { inline_keyboard: rows } } : {}) });
+  // A button press updates the pressed menu in place instead of stacking a new message; alerts are never overwritten.
+  let editTarget = null;
+  const keptMessages = new Set();
+  async function send(type, id, text, rows = []) {
+    const target = editTarget;
+    if (target && target.chatId === id && tokens[target.type] === tokens[type]) {
+      editTarget = null;
+      try { return await api(type, 'editMessageText', { chat_id: id, message_id: target.messageId, ...payload(text, rows) }); }
+      catch (error) {
+        if (error.notModified) return null;
+        if (error.telegramCode !== 400) throw error;
+      }
+    }
+    return api(type, 'sendMessage', { chat_id: id, ...payload(text, rows) });
+  }
   const sendPhoto = createPhotoSender({ clientToken, adminToken, fetch: fetcher, api });
   const panel = service.panel ? createTelegramAdmin({ service, send, api, sendPhoto, complete: completedReply, now }) : null;
   const supportWaiting = new Map();
@@ -93,7 +111,11 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
       for (const alert of alerts) {
         if (delivered >= 10) break;
         if (!await service.panel.claimAlert(ownerId, alert.key, { cooldownMs: alert.cooldownMs })) continue;
-        try { await send('admin', ownerId, alert.text, [[button('Панель SCENZA', 'adm:home')]]); delivered++; }
+        try {
+          const sent = await api('admin', 'sendMessage', { chat_id: ownerId, ...payload(alert.text, [[button('Панель SCENZA', 'adm:home')]]) });
+          if (sent?.message_id) { keptMessages.add(`${ownerId}:${sent.message_id}`); if (keptMessages.size > 500) keptMessages.delete(keptMessages.values().next().value); }
+          delivered++;
+        }
         catch (error) {
           if (error.telegramCode) await service.panel.releaseAlert(ownerId, alert.key);
           throw error;
@@ -342,15 +364,18 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
     }
     const key = `${type}:${update.update_id}`;
     const reply = completed.get(key);
-    if (reply?.expires <= now()) completed.delete(key);
-    else if (reply?.actor === person.id && (type !== 'admin' || role === 'owner')) return send(type, person.id, reply.text, reply.rows);
+    editTarget = callback && Number.isSafeInteger(message.message_id) && typeof message.text === 'string' && !keptMessages.has(`${person.id}:${message.message_id}`) ? { type, chatId: person.id, messageId: message.message_id } : null;
     try {
-      await (type === 'client' ? client(update, person, message.text || '', callback?.data) : admin(update, person, message.text || '', callback?.data, role));
-    } catch (error) {
-      if (error.telegramFailure) throw error;
-      const membership = /^(?:Для регистрации подпишитесь|Не удалось проверить подписку)/.test(error.message);
-      await send(type, person.id, error.status && error.status < 500 || membership ? error.message : 'Не удалось выполнить действие. Сервис временно недоступен. Попробуйте позже.', type === 'client' ? membership ? [[{ text: 'Подписаться на MediaFlowTech', url: 'https://t.me/MediaFlowTech' }]] : clientRows() : [[button('Главное меню', 'adm:home')]]);
-    }
+      if (reply?.expires <= now()) completed.delete(key);
+      else if (reply?.actor === person.id && (type !== 'admin' || role === 'owner')) return await send(type, person.id, reply.text, reply.rows);
+      try {
+        await (type === 'client' ? client(update, person, message.text || '', callback?.data) : admin(update, person, message.text || '', callback?.data, role));
+      } catch (error) {
+        if (error.telegramFailure) throw error;
+        const membership = /^(?:Для регистрации подпишитесь|Не удалось проверить подписку)/.test(error.message);
+        await send(type, person.id, error.status && error.status < 500 || membership ? error.message : 'Не удалось выполнить действие. Сервис временно недоступен. Попробуйте позже.', type === 'client' ? membership ? [[{ text: 'Подписаться на MediaFlowTech', url: 'https://t.me/MediaFlowTech' }]] : clientRows() : [[button('Главное меню', 'adm:home')]]);
+      }
+    } finally { editTarget = null; }
   }
   async function configure() {
     const commands = {
