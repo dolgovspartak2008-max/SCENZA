@@ -1,11 +1,15 @@
 import { spawn } from 'node:child_process';
 import { existsSync } from 'node:fs';
 
-if (existsSync('.env')) process.loadEnvFile('.env');
+// API and worker read .env themselves and restart when it changes, so a new key applies without rebooting.
+const baseEnv = { ...process.env };
+const hasEnv = existsSync('.env');
+if (hasEnv) process.loadEnvFile('.env');
+const nodeArgs = ['--watch', '--watch-path=server', ...(hasEnv ? ['--env-file=.env', '--watch-path=.env'] : [])];
 
 const children = [
-  spawn(process.execPath, ['--watch', '--watch-path=server', 'server/ai/worker.mjs'], { stdio: 'inherit', windowsHide: true }),
-  spawn(process.execPath, ['--watch', '--watch-path=server', 'server/index.mjs'], { stdio: 'inherit', windowsHide: true }),
+  spawn(process.execPath, [...nodeArgs, 'server/ai/worker.mjs'], { stdio: 'inherit', windowsHide: true, env: baseEnv }),
+  spawn(process.execPath, [...nodeArgs, 'server/index.mjs'], { stdio: 'inherit', windowsHide: true, env: baseEnv }),
   spawn(process.execPath, ['node_modules/vite/bin/vite.js', ...(process.argv.includes('--preview') ? ['preview'] : [])], { stdio: 'inherit', windowsHide: true }),
 ];
 let stopping = false;
