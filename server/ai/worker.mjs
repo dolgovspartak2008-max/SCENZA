@@ -1,4 +1,4 @@
-import { promises as fs, createReadStream } from 'node:fs';
+import { promises as fs, createReadStream, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID, createHash } from 'node:crypto';
@@ -7,7 +7,7 @@ import { createStore } from './store.mjs';
 import { createStorage } from './storage.mjs';
 import { OpenRouterProvider, PRIMARY_VIDEO_MODEL, FAST_EDIT_MODEL, ANALYSIS_VERSION } from './openai.mjs';
 import { analyzeLongVideo } from './analysis.mjs';
-import { ff, run, inspect, normalizeSettings, normalizeAd, applyAdPatch, timelineDuration, adTotalDuration, render, fail, resolveTool } from './render.mjs';
+import { ff, run, inspect, normalizeSettings, normalizeAd, applyAdPatch, timelineDuration, adTotalDuration, render, fail } from './render.mjs';
 import { createTokens } from './tokens.mjs';
 import { exportSrt, packXml } from './project-export.mjs';
 import { writeZip } from './zip.mjs';
@@ -38,8 +38,7 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
   const recordUsage=async record=>{await store.recordAiUsage({sourceSeconds:usageJob.sourceSeconds,...record,ownerId:usageJob.ownerId,projectId:usageJob.projectId,jobId:usageJob.id,operation:usageJob.type});usageWarning=false;};
   const ai=provider||new OpenRouterProvider({apiKey:env.OPENROUTER_API_KEY || '',model:env.PRIMARY_VIDEO_MODEL || PRIMARY_VIDEO_MODEL,editModel:env.FAST_EDIT_MODEL || FAST_EDIT_MODEL,onUsage:recordUsage,onUsageError:usageError});
   const workerId=randomUUID(),tokens=createTokens(store);
-  // Project venv first; without it the system Python is tried, so a missing venv no longer stops every analysis.
-  python ||= resolveTool(env.SCENZA_PYTHON,path.join(workspace,'.scena','venv',process.platform==='win32'?'Scripts/python.exe':'bin/python'),process.platform==='win32'?'python':'python3');
+  python ||= env.SCENZA_PYTHON || path.join(workspace,'.scena','venv',process.platform==='win32'?'Scripts/python.exe':'bin/python');
   let stopping=false;
   async function processJob(job) {
     usageJob = job;
@@ -124,6 +123,8 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
         if(!project.analysis) {
           await stage('TRANSCRIBING','Распознавание речи и подготовка сцен');
           const source=await get('original'), output=path.join(folder,'analysis.json');
+          // .scena is not in Git, so a fresh copy of the project has no Python environment until setup runs.
+          if(path.isAbsolute(python)&&!existsSync(python))throw fail('Не установлено Python-окружение для анализа видео. Запустите Setup-Python.cmd в папке проекта, затем перезапустите студию.',503);
           await run(python,[path.join(workspace,'server/ai/media.py'),project.hasAudio?'analyze':'inspect','--input',source,'--output',output],{timeout:12*3600000,signal:operation.signal});
           project.analysis=JSON.parse(await fs.readFile(output,'utf8')); project.analysis.hasAudio=project.hasAudio; project.analysis.segments||=[]; await save();
         }
