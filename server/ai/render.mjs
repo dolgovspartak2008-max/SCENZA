@@ -78,6 +78,12 @@ export function normalizeSettings(input, duration) {
   return Object.fromEntries(['start','end',...(settings.segments ? ['segments'] : []),'format','cropX','cropMode','cropSmoothing','muted','subtitles','subtitleStyle','subtitleSize','subtitleColor','subtitleFont','subtitleColors','subtitleColorEvery','subtitleAccentColor','subtitleY','subtitlePosition','subtitleReplacements','keywords','musicId','musicVolume'].map(key => [key, settings[key]]));
 }
 
+// media.py reports failures as one safe JSON line {"error":{"code","message"}} on stderr; anything else stays generic.
+function safeError(stderr) {
+  const line = stderr.trim().split(/\r?\n/).at(-1) || '';
+  try { const { error } = JSON.parse(line); if (error && /^[A-Z_]{3,40}$/.test(error.code) && typeof error.message === 'string' && error.message.length <= 300) return error; } catch {}
+  return null;
+}
 export function run(binary, args, { cwd, duration, onProgress, timeout = 3 * 3600000, signal } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(binary, args, { cwd, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], signal });
@@ -91,7 +97,7 @@ export function run(binary, args, { cwd, duration, onProgress, timeout = 3 * 360
     child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-4000); });
     // The safe diagnostic (program name + system code) tells the admin which program is missing; no paths or secrets.
     child.once('error', error => { clearTimeout(timer); console.error(`SCENZA: не удалось запустить ${binary}: ${error.code || error.message}`); reject(Object.assign(fail(`Не удалось запустить обработку видео. Проверьте установку серверных программ (${path.basename(String(binary)).replace(/\.exe$/i, '')}: ${error.code || 'START_FAILED'}).`, 503), { code: error.code })); });
-    child.once('close', code => { clearTimeout(timer); if (code === 0) resolve({ stdout, stderr }); else reject(fail('Не удалось обработать видео. Проверьте файл и доступные ресурсы сервера.', 422)); });
+    child.once('close', code => { clearTimeout(timer); if (code === 0) resolve({ stdout, stderr }); else { const known = safeError(stderr); if (known) console.error(`SCENZA: ${path.basename(String(binary))} завершился с ошибкой ${known.code}`); reject(Object.assign(fail(known?.message || 'Не удалось обработать видео. Проверьте файл и доступные ресурсы сервера.', 422), known ? { code: known.code } : {})); } });
   });
 }
 export const ff = (args, options = {}) => run(FFMPEG_PATH, ['-hide_banner', '-nostdin', '-y', '-progress', 'pipe:1', ...args], options);
