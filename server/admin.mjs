@@ -1,6 +1,7 @@
 import { promises as fs, constants } from 'node:fs';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
+import { diagnose, jobAlertText } from './diagnosis.mjs';
 
 const DAY = 86400000;
 const fail = (message, status = 400, code) => Object.assign(new Error(message), { status, ...(code ? { code } : {}) });
@@ -211,7 +212,7 @@ export async function createAdminService({ auth, dataDir, getVideoApi, now = Dat
         const data = await videoAlerts(new Date(now() - 15 * 60000).toISOString());
         for (const job of data.jobs) {
           if (job.stalled) alerts.push({ key: `job:stalled:${job.type}`, text: `SCENZA: зависшая задача ${job.id}.\nЭтап: ${job.stage}.\nПроверьте раздел «Генерации».` });
-          else if (job.status === 'error' && job.stage !== 'cancelled' && Date.parse(job.updatedAt) > now() - 15 * 60000 && /AI|OpenRouter|API|worker|ffmpeg|прерван|недоступ|сервер|timeout|failed/i.test(job.error || '')) alerts.push({ key: `job:error:${job.type}:${String(job.error).slice(0, 500)}`, text: `SCENZA: ошибка обработки ${job.id}.\n${String(job.error).slice(0, 1500)}` });
+          else if (job.status === 'error' && job.stage !== 'cancelled' && Date.parse(job.updatedAt) > now() - 15 * 60000 && (diagnose(job.error) || /AI|OpenRouter|API|worker|ffmpeg|прерван|недоступ|сервер|timeout|failed/i.test(job.error || ''))) alerts.push({ key: `job:error:${job.type}:${String(job.error).slice(0, 500)}`, text: jobAlertText(job) });
         }
         const recent = data.usage.filter(row => row.error && Date.parse(row.createdAt) > now() - 15 * 60000);
         for (const code of new Set(recent.map(row => row.error))) if (/NETWORK|PROVIDER|RATE_LIMIT|UNKNOWN|PAYMENT_REQUIRED/.test(code)) alerts.push({ key: `ai:${code}`, text: `SCENZA: сбой AI API (${code}). Проверьте раздел AI / расходы и баланс в кабинете API.` });
