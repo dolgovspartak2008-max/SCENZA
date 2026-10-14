@@ -9,14 +9,13 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
-import ffmpegPath from 'ffmpeg-static';
-import ffprobe from 'ffprobe-static';
+import { FFMPEG_PATH as ffmpegPath, FFPROBE_PATH } from './ai/render.mjs';
 import { createAuth } from './auth.mjs';
 import { buildNotifications, createNotificationState } from './notifications.mjs';
 import { createAdminService } from './admin.mjs';
 import { createTelegramMembership } from './telegram-membership.mjs';
 
-export const ffprobePath = ffprobe.path;
+export const ffprobePath = FFPROBE_PATH;
 const workspace = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const MAX_VIDEO = 2 * 1024 ** 3;
 const formats = ['9:16', '1:1', '16:9'];

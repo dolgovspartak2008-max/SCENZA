@@ -1,6 +1,5 @@
 import { stat, readFile } from 'node:fs/promises';
-import ffprobe from 'ffprobe-static';
-import { run } from './render.mjs';
+import { run, FFPROBE_PATH } from './render.mjs';
 import { boundedMetadata, candidateProperties, candidateSegments, candidateOverlap, storySelection, validateCandidates, validateModelCandidates, interpretEditRequest, responseSchema } from './gemini.mjs';
 
 const error = (message, code = 'AI_INVALID_RESPONSE') => Object.assign(new Error(message), { code });
@@ -158,7 +157,7 @@ export class OpenRouterProvider {
     if (!Number.isFinite(duration) || duration <= 0 || duration > 1800) throw error('Нужен фрагмент видео длительностью до 30 минут.', 'AI_INPUT_ERROR');
     const info = await stat(filePath).catch(() => { throw error('Исходное видео недоступно.', 'AI_INPUT_ERROR'); });
     if (!info.isFile() || info.size <= 0 || info.size > 128 * 1024 ** 2) throw error('Подготовленное видео превышает 128 МБ. Уменьшите размер proxy, сохранив всю длительность.', 'AI_INPUT_TOO_LARGE');
-    const { stdout } = await run(ffprobe.path, ['-v', 'error', '-protocol_whitelist', 'file,pipe', '-select_streams', 'v:0', '-show_entries', 'stream=duration', '-of', 'json', filePath], { signal, timeout: 30000 });
+    const { stdout } = await run(FFPROBE_PATH, ['-v', 'error', '-protocol_whitelist', 'file,pipe', '-select_streams', 'v:0', '-show_entries', 'stream=duration', '-of', 'json', filePath], { signal, timeout: 30000 });
     const stream = JSON.parse(stdout).streams?.[0];
     if (!stream) throw error('В файле нет видеодорожки.', 'AI_INPUT_ERROR');
     const visualDuration = Number(stream.duration) || duration;

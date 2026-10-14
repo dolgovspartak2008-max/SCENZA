@@ -1,11 +1,16 @@
 import { spawn } from 'node:child_process';
-import { promises as fs } from 'node:fs';
+import { promises as fs, existsSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import ffmpeg from 'ffmpeg-static';
 import ffprobe from 'ffprobe-static';
 
 export const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+// Bundled binaries can be missing (skipped postinstall, unsupported platform). Then an explicit env path or the system program is used.
+const usable = file => typeof file === 'string' && file !== '' && (!path.isAbsolute(file) || existsSync(file));
+export const resolveTool = (...candidates) => candidates.find(usable) || candidates.at(-1);
+export const FFMPEG_PATH = resolveTool(process.env.SCENZA_FFMPEG, ffmpeg, 'ffmpeg');
+export const FFPROBE_PATH = resolveTool(process.env.SCENZA_FFPROBE, ffprobe?.path, 'ffprobe');
 const styles = ['Minimal', 'Classic', 'Dynamic', 'Bold', 'Cinematic'];
 // Subtitle fonts ship with the site (public/fonts/subtitles); libass loads them by family name through `fontsdir`.
 export const SUBTITLE_FONTS = { montserrat: 'SCENZA Montserrat Black', manrope: 'SCENZA Manrope ExtraBold', rubik: 'SCENZA Rubik ExtraBold', unbounded: 'SCENZA Unbounded Bold', oswald: 'SCENZA Oswald Bold', nunito: 'SCENZA Nunito Black', inter: 'SCENZA Inter ExtraBold' };
@@ -84,13 +89,14 @@ export function run(binary, args, { cwd, duration, onProgress, timeout = 3 * 360
       for (const line of lines) if (duration && /^out_time_us=\d+/.test(line)) onProgress?.(Math.min(99, Math.round(Number(line.split('=')[1]) / 1e6 / duration * 100)));
     });
     child.stderr.on('data', chunk => { stderr = (stderr + chunk).slice(-4000); });
-    child.once('error', () => { clearTimeout(timer); reject(fail('Не удалось запустить обработку видео. Проверьте установку серверных программ.', 503)); });
+    // The safe diagnostic (program name + system code) tells the admin which program is missing; no paths or secrets.
+    child.once('error', error => { clearTimeout(timer); console.error(`SCENZA: не удалось запустить ${binary}: ${error.code || error.message}`); reject(Object.assign(fail(`Не удалось запустить обработку видео. Проверьте установку серверных программ (${path.basename(String(binary)).replace(/\.exe$/i, '')}: ${error.code || 'START_FAILED'}).`, 503), { code: error.code })); });
     child.once('close', code => { clearTimeout(timer); if (code === 0) resolve({ stdout, stderr }); else reject(fail('Не удалось обработать видео. Проверьте файл и доступные ресурсы сервера.', 422)); });
   });
 }
-export const ff = (args, options = {}) => run(ffmpeg, ['-hide_banner', '-nostdin', '-y', '-progress', 'pipe:1', ...args], options);
+export const ff = (args, options = {}) => run(FFMPEG_PATH, ['-hide_banner', '-nostdin', '-y', '-progress', 'pipe:1', ...args], options);
 export async function inspect(input) {
-  const { stdout } = await run(ffprobe.path, ['-v', 'error', '-protocol_whitelist', 'file,pipe', '-format_whitelist', 'mov,matroska,avi,mpeg,mpegts,flv,asf,ogg', '-show_streams', '-show_format', '-of', 'json', input], { timeout: 30000 });
+  const { stdout } = await run(FFPROBE_PATH, ['-v', 'error', '-protocol_whitelist', 'file,pipe', '-format_whitelist', 'mov,matroska,avi,mpeg,mpegts,flv,asf,ogg', '-show_streams', '-show_format', '-of', 'json', input], { timeout: 30000 });
   const data = JSON.parse(stdout), video = data.streams?.find(s => s.codec_type === 'video' && !s.disposition?.attached_pic);
   const duration = Number(data.format?.duration || video?.duration);
   if (!video || !Number.isFinite(duration) || duration <= 0 || duration > 43200 || video.width > 8192 || video.height > 8192) throw fail('Нужен видеофайл до 12 часов с разрешением до 8192 пикселей.');

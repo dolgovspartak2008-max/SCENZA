@@ -7,7 +7,7 @@ import { createStore } from './store.mjs';
 import { createStorage } from './storage.mjs';
 import { OpenRouterProvider, PRIMARY_VIDEO_MODEL, FAST_EDIT_MODEL, ANALYSIS_VERSION } from './openai.mjs';
 import { analyzeLongVideo } from './analysis.mjs';
-import { ff, run, inspect, normalizeSettings, normalizeAd, applyAdPatch, timelineDuration, adTotalDuration, render, fail } from './render.mjs';
+import { ff, run, inspect, normalizeSettings, normalizeAd, applyAdPatch, timelineDuration, adTotalDuration, render, fail, resolveTool } from './render.mjs';
 import { createTokens } from './tokens.mjs';
 import { exportSrt, packXml } from './project-export.mjs';
 import { writeZip } from './zip.mjs';
@@ -38,7 +38,8 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
   const recordUsage=async record=>{await store.recordAiUsage({sourceSeconds:usageJob.sourceSeconds,...record,ownerId:usageJob.ownerId,projectId:usageJob.projectId,jobId:usageJob.id,operation:usageJob.type});usageWarning=false;};
   const ai=provider||new OpenRouterProvider({apiKey:env.OPENROUTER_API_KEY || '',model:env.PRIMARY_VIDEO_MODEL || PRIMARY_VIDEO_MODEL,editModel:env.FAST_EDIT_MODEL || FAST_EDIT_MODEL,onUsage:recordUsage,onUsageError:usageError});
   const workerId=randomUUID(),tokens=createTokens(store);
-  python ||= env.SCENZA_PYTHON || path.join(workspace,'.scena','venv',process.platform==='win32'?'Scripts/python.exe':'bin/python');
+  // Project venv first; without it the system Python is tried, so a missing venv no longer stops every analysis.
+  python ||= resolveTool(env.SCENZA_PYTHON,path.join(workspace,'.scena','venv',process.platform==='win32'?'Scripts/python.exe':'bin/python'),process.platform==='win32'?'python':'python3');
   let stopping=false;
   async function processJob(job) {
     usageJob = job;
