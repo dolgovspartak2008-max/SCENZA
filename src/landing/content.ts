@@ -7,7 +7,7 @@ type LandingCopy = {
   brandSubtitle: string;
   nav: { features: string; how: string; pricing: string; faq: string };
   login: string; start: string; menu: string; close: string; skip: string;
-  hero: { title: string; subtitle: string; primary: string };
+  hero: { title: string; subtitle: string; primary: string; greeting: string };
   examples: { title: string; description: string; badge: string; watch: string; names: [string, string, string, string]; types: [string, string, string, string] };
   platforms: { title: string; description: string };
   workspace: { title: string; description: string; features: [string, string, string, string]; details: [string, string, string, string] };
@@ -28,7 +28,7 @@ export const content: Record<Language, LandingCopy> = {
     brandSubtitle: 'Студия коротких видео',
     nav: { features: 'Возможности', how: 'Как это работает', pricing: 'Тарифы', faq: 'FAQ' },
     login: 'Войти', start: 'Начать', menu: 'Открыть меню', close: 'Закрыть', skip: 'К содержимому',
-    hero: { title: 'Создавайте видео с SCENZA', subtitle: 'Находите интересные моменты, добавляйте субтитры и превращайте длинные записи в короткие ролики', primary: 'Начать бесплатно' },
+    hero: { title: 'Создавайте видео с SCENZA', subtitle: 'Находите интересные моменты, добавляйте субтитры и превращайте длинные записи в короткие ролики', primary: 'Начать бесплатно', greeting: 'Привет!\nДобро пожаловать в\u00a0SCENZA' },
     examples: { title: 'Истории в коротком формате', description: 'Посмотрите, какие видео вы можете создать на нашей платформе.', badge: 'Демонстрационные примеры', watch: 'Смотреть видео', names: ['Пример 1', 'Пример 2', 'Пример 3', 'Пример 4'], types: ['Квадратное видео · 1:1', 'Вертикальное видео · 9:16', 'Вертикальное видео · 9:16', 'Видео с субтитрами · 9:16'] },
     platforms: { title: 'Готовьте видео для любимых платформ', description: 'Один ролик — подходящий формат. Готовые файлы для ваших публикаций.' },
     workspace: { title: 'Попробуйте редактор на готовом видео', description: 'Выберите фрагмент, измените текст и сравните форматы прямо здесь.', features: ['Выбор фрагмента', 'Оформление субтитров', 'Формат кадра', 'Сохранение кадра'], details: ['Три отрезка одного видео для знакомства с редактором', 'Свой текст и три стиля, без распознавания речи', 'Сравните 9:16, 1:1 и 16:9', 'Скачайте PNG с выбранным оформлением'] },
@@ -81,7 +81,7 @@ export const content: Record<Language, LandingCopy> = {
     brandSubtitle: 'Short video studio',
     nav: { features: 'Features', how: 'How it works', pricing: 'Pricing', faq: 'FAQ' },
     login: 'Log in', start: 'Get started', menu: 'Open menu', close: 'Close', skip: 'Skip to content',
-    hero: { title: 'Create videos with SCENZA', subtitle: 'Find interesting moments, add subtitles and turn long recordings into short videos', primary: 'Start for free' },
+    hero: { title: 'Create videos with SCENZA', subtitle: 'Find interesting moments, add subtitles and turn long recordings into short videos', primary: 'Start for free', greeting: 'Hi!\nWelcome to SCENZA' },
     examples: { title: 'Stories, in a shorter format', description: 'See what videos you can create on our platform.', badge: 'Demonstration examples', watch: 'Watch video', names: ['Example 1', 'Example 2', 'Example 3', 'Example 4'], types: ['Square video · 1:1', 'Vertical video · 9:16', 'Vertical video · 9:16', 'Video with subtitles · 9:16'] },
     platforms: { title: 'Prepare videos for your favourite platforms', description: 'One story, the right format. Video files ready for your next post.' },
     workspace: { title: 'Try the editor with a sample video', description: 'Choose a segment, edit the text and compare formats right here.', features: ['Choose a segment', 'Style captions', 'Change the format', 'Save a frame'], details: ['Three segments of one video to explore the editor', 'Your text and three styles, without speech recognition', 'Compare 9:16, 1:1 and 16:9', 'Download a PNG with your chosen styling'] },
