@@ -14,6 +14,13 @@ export function publicationUrl(value) {
   return url.href;
 }
 
+// Longer sources cost the client too many tokens, so uploads are refused above this length (checked on the server).
+export const MAX_SOURCE_MINUTES = 20;
+export const MAX_SOURCE_SECONDS = MAX_SOURCE_MINUTES * 60;
+export const SOURCE_TOO_LONG = `Видео длиннее ${MAX_SOURCE_MINUTES} минут. Обрежьте его до ${MAX_SOURCE_MINUTES} минут и загрузите снова — токены не списаны.`;
+// A small tolerance keeps a file of exactly 20:00 (container rounding) from being refused.
+export const sourceTooLong = seconds => Number(seconds) > MAX_SOURCE_SECONDS + 1;
+
 export const tokenCost = seconds => Math.max(1, Math.ceil((Number(seconds) || 0) / 60));
 const sum = entries => entries.reduce((total, entry) => total + entry.tokens, 0);
 

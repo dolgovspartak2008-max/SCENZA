@@ -49,3 +49,14 @@ test('editing pack timeline keeps an overlay banner on its own track', () => {
   assert.match(xml, /<clipitem id="banner-1"><name>3-banner.mp4<\/name><duration>50<\/duration><rate><timebase>25<\/timebase><ntsc>FALSE<\/ntsc><\/rate><start>200<\/start><end>250<\/end>/);
   assert.match(xml, /<width>1080<\/width><height>1080<\/height>/);
 });
+
+test('sources longer than 20 minutes are refused before any token is charged', async () => {
+  const { sourceTooLong, MAX_SOURCE_SECONDS, SOURCE_TOO_LONG } = await import('../server/ai/tokens.mjs');
+  assert.equal(MAX_SOURCE_SECONDS, 1200);
+  assert.equal(sourceTooLong(1200), false);
+  assert.equal(sourceTooLong(1200.6), false);
+  assert.equal(sourceTooLong(19 * 60), false);
+  assert.equal(sourceTooLong(20 * 60 + 5), true);
+  assert.equal(sourceTooLong(45 * 60), true);
+  assert.match(SOURCE_TOO_LONG, /20 минут/);
+});

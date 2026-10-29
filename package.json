@@ -7,8 +7,9 @@
     "dev": "node scripts/dev.mjs",
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
-    "test": "node --test tests/model.test.ts tests/landing.test.ts tests/server*.mjs tests/banner-capcut.test.mjs",
-    "preview": "node scripts/dev.mjs --preview"
+    "test": "node --test tests/model.test.ts tests/landing.test.ts tests/server*.mjs tests/banner-capcut.test.mjs tests/source-length-limit.test.mjs tests/robot-greeting.test.ts",
+    "preview": "node scripts/dev.mjs --preview",
+    "check:ai": "node scripts/check-ai-key.mjs"
   },
   "dependencies": {
     "@number-flow/react": "^0.6.2",

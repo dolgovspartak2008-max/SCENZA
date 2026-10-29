@@ -30,6 +30,8 @@ function PublishBonus({notify,onDone}:{notify:Notify;onDone:()=>void}) {
   </form>;
 }
 const tokenWord=(count:number)=>count%10===1&&count%100!==11?'токен':[2,3,4].includes(count%10)&&![12,13,14].includes(count%100)?'токена':'токенов';
+// Matches MAX_SOURCE_MINUTES in server/ai/tokens.mjs.
+const MAX_SOURCE_MINUTES=20;
 const videoDuration=(file:File)=>new Promise<number|null>(resolve=>{
   const video=document.createElement('video'),url=URL.createObjectURL(file);let settled=false;
   const done=(value:number|null)=>{if(settled)return;settled=true;URL.revokeObjectURL(url);resolve(value);};
@@ -100,9 +102,11 @@ export default function AiStudio({ projectId, list=false, navigate, notify }: {p
   // The browser reads the duration locally, so the cost is known before a single byte is uploaded.
   async function choose(file:File) {
     if(busy)return;
-    if(project?.status==='UPLOADING'||usage?.tokens===undefined){void upload(file);return;}
+    if(project?.status==='UPLOADING'){void upload(file);return;}
     const seconds=await videoDuration(file);
-    if(seconds===null){void upload(file);return;}
+    // Long sources burn the client's tokens, so they are stopped before upload; the server checks the same limit.
+    if(seconds!==null&&seconds>MAX_SOURCE_MINUTES*60+1){setError(`Видео длится ${Math.ceil(seconds/60)} мин. Можно загружать видео до ${MAX_SOURCE_MINUTES} минут — обрежьте его и загрузите снова. Токены не списаны.`);return;}
+    if(seconds===null||usage?.tokens===undefined){void upload(file);return;}
     setEstimate({file,seconds,tokens:Math.max(1,Math.ceil(seconds/60))});
   }
   async function upload(file:File) {
@@ -181,7 +185,7 @@ export default function AiStudio({ projectId, list=false, navigate, notify }: {p
         <section className="ai-upload" onDragOver={e=>e.preventDefault()} onDrop={e=>{e.preventDefault();const file=e.dataTransfer.files[0];if(file)void choose(file);}}>
           <CloudUpload size={54} strokeWidth={1.5}/><h2>{project?'Продолжите загрузку':'Перетащите видео сюда'}</h2><p>{project?`Выберите тот же файл: ${project.upload.name}`:'или нажмите кнопку ниже'}</p>
           <input ref={input} type="file" accept="video/*,.mkv,.m4v" hidden onChange={e=>{const file=e.target.files?.[0];if(file)void choose(file);e.target.value='';}}/>
-          <button className="button primary" disabled={busy} onClick={()=>input.current?.click()}>{busy?'Загружаем…':'Загрузить видео'}</button><small>MP4, MOV, MKV, WebM · до 20 ГБ</small><p className="ai-note ai-upload-hint">Совет: лучше загружать видео до 30 минут — анализ пройдёт быстрее, а ролики получатся точнее.</p>
+          <button className="button primary" disabled={busy} onClick={()=>input.current?.click()}>{busy?'Загружаем…':'Загрузить видео'}</button><small>MP4, MOV, MKV, WebM · до {MAX_SOURCE_MINUTES} минут, до 20 ГБ</small><p className="ai-note ai-upload-hint">Видео длиннее {MAX_SOURCE_MINUTES} минут не принимаются — так токены не уходят на лишний материал. Длинную запись сначала разрежьте на части.</p>
           {uploadProgress!==null&&busy&&<button className="text-link" onClick={()=>controller.current?.abort()}>Приостановить загрузку</button>}
           {estimate&&usage?.tokens!==undefined&&<div className={`ai-estimate ${estimate.tokens>usage.tokens?'is-short':''}`} role="status"><strong>Видео {formatTime(estimate.seconds)} = {estimate.tokens} {tokenWord(estimate.tokens)}</strong><span>1 токен — каждая начатая минута исходного видео.</span><span>На балансе: {usage.tokens}. {estimate.tokens>usage.tokens?`Не хватает ${estimate.tokens-usage.tokens}.`:`После анализа останется ${usage.tokens-estimate.tokens}.`}</span><div className="ai-actions">{estimate.tokens>usage.tokens?<a className="button primary" href="/#pricing">Пополнить токены</a>:<button type="button" className="button primary" onClick={()=>{const file=estimate.file;setEstimate(null);void upload(file);}}>Загрузить и списать {estimate.tokens}</button>}<button type="button" className="button outline" onClick={()=>setEstimate(null)}>Выбрать другое видео</button></div></div>}
         </section>

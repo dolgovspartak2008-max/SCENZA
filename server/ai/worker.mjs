@@ -8,7 +8,7 @@ import { createStorage } from './storage.mjs';
 import { OpenRouterProvider, PRIMARY_VIDEO_MODEL, FAST_EDIT_MODEL, ANALYSIS_VERSION } from './openai.mjs';
 import { analyzeLongVideo } from './analysis.mjs';
 import { ff, run, inspect, normalizeSettings, normalizeAd, applyAdPatch, timelineDuration, adTotalDuration, render, fail } from './render.mjs';
-import { createTokens } from './tokens.mjs';
+import { createTokens, sourceTooLong, SOURCE_TOO_LONG } from './tokens.mjs';
 import { exportSrt, packXml } from './project-export.mjs';
 import { writeZip } from './zip.mjs';
 
@@ -94,6 +94,8 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
           project.upload.size=(await fs.stat(input)).size;project.upload.bytes=project.upload.size;
         } else if (project.files.original) await storage.get(project.files.original.key,input);
         const metadata=await inspect(input);
+        // Refuse long sources before storing or processing anything; no tokens are charged at this stage.
+        if(sourceTooLong(metadata.duration)){project.duration=metadata.duration;await fs.rm(input,{force:true});throw fail(SOURCE_TOO_LONG,413);}
         Object.assign(project,metadata);
         const sourceHash=createHash('sha256');for await(const chunk of createReadStream(input))sourceHash.update(chunk);
         const previousFingerprint=project.sourceFingerprint;project.sourceFingerprint=sourceHash.digest('hex');
@@ -116,6 +118,8 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
           project.analysisResult=null;project.analysisWindows=[];project.candidates=[];project.analyzedAt=null;
         }
         project.analysisCache=cacheIdentity;
+        // Projects uploaded before the length limit must not spend tokens on a long source either.
+        if(!project.analysisResult&&sourceTooLong(project.duration))throw fail(SOURCE_TOO_LONG,413);
         // Charge before any paid AI work; the same source is never charged twice.
         if(!project.analysisResult)await tokens.charge(job.ownerId,project.id,cacheIdentity.source,project.duration);
         if(!project.analysisResult&&project.candidates.length)project.analysisResult={candidates:project.candidates,model:project.analysisModel};

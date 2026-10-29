@@ -47,33 +47,29 @@
 .scenza-hero .product-demo { border-color: #276c70; box-shadow: 0 17px 46px #00000055; }
 .scenza-hero-robot { position: relative; z-index: 1; min-width: 0; width: 100%; height: clamp(490px, 43vw, 640px); isolation: isolate; }
 .scenza-robot-spotlight { position: absolute; inset: 0; z-index: -1; background: radial-gradient(ellipse at 50% 48%, #35ead02b, #18ad9f0d 35%, transparent 65%); pointer-events: none; }
-.scenza-robot-scene, .scenza-robot-video { width: 100%; height: 100%; }
-.scenza-robot-scene { transform: scale(1.2312) translateZ(0); transform-origin: center; will-change: transform; backface-visibility: hidden; mask-image: linear-gradient(to bottom, #000 62%, transparent 90%); }
-.scenza-robot-video { display: block; object-fit: cover; filter: brightness(1.22) contrast(.97); pointer-events: none; mask-image: radial-gradient(ellipse 50% 52% at 50% 45%, #000 58%, transparent 100%); }
-/* Greeting that appears "in the robot's head": two small thought dots lead from the head to a bubble where the text types out. */
-.scenza-robot-thought { position: absolute; z-index: 2; left: calc(50% + clamp(34px, 3.4vw, 52px)); top: 7%; display: flex; flex-direction: column-reverse; align-items: flex-start; pointer-events: none; }
-p.scenza-robot-thought-bubble { position: relative; display: grid; margin: 0; max-width: min(250px, 42vw); padding: 12px 17px 13px; border: 1px solid #2f7c78; border-radius: 18px 18px 18px 6px; background: linear-gradient(160deg, #0f2f30f2, #08191ef2); box-shadow: 0 0 0 1px #45f0d60f inset, 0 10px 34px #00000066, 0 0 30px #45f0d61f; font-size: .96rem; font-weight: 700; line-height: 1.4; letter-spacing: -.005em; color: #f4f7fa; transform-origin: 0% 100%; opacity: 0; transform: translateY(6px) scale(.86); }
-.scenza-robot-thought-sizer, .scenza-robot-thought-text { grid-area: 1 / 1; white-space: pre-line; }
-.scenza-robot-thought-sizer { visibility: hidden; }
-.scenza-robot-thought-caret { display: inline-block; width: 2px; height: 1.05em; margin-left: 2px; vertical-align: -.16em; border-radius: 1px; background: var(--accent); opacity: 0; transition: opacity .3s; }
-.scenza-robot-thought-caret[data-typing=true] { opacity: 1; animation: scenza-caret-blink 1s steps(1) infinite; }
-.scenza-robot-thought-dot { display: block; border: 1px solid #2f7c78; border-radius: 50%; background: #0c2628; box-shadow: 0 0 14px #45f0d626; opacity: 0; transform: scale(.4); }
-.scenza-robot-thought-dot:nth-child(1) { width: 8px; height: 8px; margin: 3px 0 0 -14px; }
-.scenza-robot-thought-dot:nth-child(2) { width: 13px; height: 13px; margin: 3px 0 0 -4px; }
-.scenza-robot-thought[data-visible=true] .scenza-robot-thought-dot { animation: scenza-thought-pop .32s cubic-bezier(.34, 1.56, .64, 1) forwards; }
-.scenza-robot-thought[data-visible=true] .scenza-robot-thought-dot:nth-child(2) { animation-delay: .1s; }
-.scenza-robot-thought[data-visible=true] .scenza-robot-thought-bubble { animation: scenza-thought-pop .42s cubic-bezier(.34, 1.56, .64, 1) .2s forwards; }
-@keyframes scenza-thought-pop { to { opacity: 1; transform: none; } }
-@keyframes scenza-caret-blink { 50% { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) {
-  .scenza-robot-thought[data-visible=true] :is(.scenza-robot-thought-dot, .scenza-robot-thought-bubble) { animation: none; opacity: 1; transform: none; }
-  .scenza-robot-thought-caret[data-typing=true] { animation: none; }
-}
-@media (max-width: 650px) { .scenza-robot-thought { left: calc(50% + 24px); top: 3%; } p.scenza-robot-thought-bubble { font-size: .84rem; padding: 9px 13px 10px; max-width: min(200px, 46vw); } }
+.scenza-robot-scene, .scenza-robot-viewport, .scenza-robot-canvas { width: 100%; height: 100%; }
+/* The robot fades in on its own place after the page loader has gone; no scale or position jump. */
+.scenza-robot-scene { opacity: 0; transform: scale(1.2312); transform-origin: center; transition: opacity .6s ease-out; mask-image: linear-gradient(to bottom, #000 62%, transparent 90%); }
+.scenza-hero-robot[data-ready=true] .scenza-robot-scene { opacity: 1; }
+.scenza-robot-canvas canvas { display: block; touch-action: pan-y; filter: brightness(1.22) contrast(.97); }
+.scenza-robot-status { position: absolute; inset: 0; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; text-align: center; }
+.scenza-robot-status p { margin: 0; color: #aac7c9; font-size: .85rem; }
+.scenza-robot-loader { width: 30px; height: 30px; border: 2px solid #35ead029; border-top-color: var(--accent); border-radius: 50%; animation: scenza-robot-loading .9s linear infinite; }
+.scenza-robot-control { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 44px; padding: 10px 18px; color: var(--accent); background: #0a2429; border: 1px solid #32746e; border-radius: 999px; font: inherit; font-size: .85rem; cursor: pointer; }
+.scenza-robot-control:hover { background: #103731; }
+.scenza-robot-control:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+@keyframes scenza-robot-loading { to { transform: rotate(360deg); } }
+/* The robot's line: a speech bubble beside its head with a small tail pointing at it. The whole text appears at once. */
+p.scenza-robot-speech { position: absolute; z-index: 2; right: calc(50% + clamp(48px, 5.4vw, 76px)); top: clamp(4px, 1.6vw, 22px); max-width: min(230px, 40vw); margin: 0; padding: 11px 16px 12px; border: 1px solid #2f7c78; border-radius: 14px; background: linear-gradient(160deg, #0f2f30, #08191e); box-shadow: 0 8px 24px #0000004d, 0 0 0 1px #45f0d60d inset; color: #f4f7fa; font-size: .95rem; font-weight: 700; line-height: 1.4; letter-spacing: -.005em; white-space: pre-line; pointer-events: none; opacity: 0; transform: translateY(8px); transition: opacity .36s ease-out, transform .36s cubic-bezier(.22, .61, .36, 1); }
+p.scenza-robot-speech::after { content: ''; position: absolute; right: -6px; bottom: 16px; width: 11px; height: 11px; border-top: 1px solid #2f7c78; border-right: 1px solid #2f7c78; background: #0a1f23; transform: rotate(45deg) skew(8deg, 8deg); border-radius: 0 3px 0 0; }
+p.scenza-robot-speech[data-visible=true] { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .scenza-robot-scene, p.scenza-robot-speech { transition: none; } .scenza-robot-loader { animation: none; } }
 .scenza-spotlight-layer { position: fixed; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; }
 .scenza-cursor-spotlight { position: absolute; left: -160px; top: -160px; width: 320px; height: 320px; border-radius: 50%; opacity: 0; background: radial-gradient(circle, #b9ffed4d 0%, #64ebd52e 20%, #24bda80d 48%, transparent 72%); transition: opacity .18s ease-out; will-change: transform; }
 @media (max-width: 950px) { .scenza-hero-robot { height: 480px; max-width: 650px; margin-inline: auto; } .scenza-robot-spotlight { background-position: center; } }
-@media (max-width: 650px) { .scenza-hero-robot { height: 420px; } }
+/* Spline fits the robot to the canvas height, so a wider canvas only adds room at the sides: the raised and presenting hands stay in frame. */
+@media (min-width: 951px) and (max-width: 1180px) { .scenza-robot-scene { width: 124%; margin-left: -12%; } }
+@media (max-width: 650px) { .scenza-hero-robot { height: 420px; } .scenza-robot-scene { width: 160%; margin-left: -30%; transform: scale(.9); } p.scenza-robot-speech { right: calc(50% + 40px); top: 2px; max-width: min(190px, 42vw); padding: 9px 12px 10px; font-size: .82rem; } p.scenza-robot-speech::after { bottom: 12px; } }
 .scenza-section-title { display: flex; justify-content: space-between; align-items: end; gap: 24px; margin-bottom: 25px; }
 .scenza-section-title h2 { font-size: clamp(1.6rem, 2.25vw, 2.15rem); line-height: 1.25; font-weight: 750; letter-spacing: -.025em; }
 .scenza-section-title p { font-size: .86rem; line-height: 1.65; margin-top: 9px; }

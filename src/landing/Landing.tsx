@@ -9,7 +9,7 @@ import { BackgroundPaths, AnimatedHeadline } from '@/components/ui/background-pa
 import { ParticleBackground } from '@/components/ui/particle-background';
 import { content } from './content';
 import { ProductDemo } from './ProductDemo';
-import { RobotVideo } from '@/components/ui/robot-video';
+import { SplineScene } from '@/components/ui/splite';
 import { Spotlight } from '@/components/ui/spotlight';
 import { parseSelection } from './plans';
 import { demoPlans } from './plans';
@@ -67,6 +67,9 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
   const [menuOpen, setMenuOpen] = useState(false);
   const [robotSettled, setRobotSettled] = useState(requestAccess);
   const finishLoading = useCallback(() => setRobotSettled(true), []);
+  // The robot greets only after the loader has fully disappeared.
+  const [loaderGone, setLoaderGone] = useState(requestAccess);
+  const loaderClosed = useCallback(() => setLoaderGone(true), []);
   const [account, setAccount] = useState<Account | null>(null);
   const [authOpen, setAuthOpen] = useState(requestAccess);
   const [authMode, setAuthMode] = useState<'login' | 'register'>(requestAccess ? 'login' : 'register');
@@ -133,7 +136,7 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
   const accountButton = account ? <ProfileMenu account={account} language={language} onLanguageChange={setLanguage} onAccountChange={setAccount} onPricing={() => { setMenuOpen(false); document.getElementById('pricing')?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); }} /> : <Button variant="outline" size="sm" onClick={() => openAuth('login')}>{copy.login}</Button>;
   return <div className="scenza-landing" inert={!robotSettled}>
     <ParticleBackground />
-    <PageLoader open={!robotSettled} onContinue={finishLoading} language={language} />
+    <PageLoader open={!robotSettled} onContinue={finishLoading} onClosed={loaderClosed} language={language} />
     <SectionNavigation language={language} disabled={!robotSettled || authOpen || menuOpen || videoIndex !== null || demoNotice} />
     <a className="skip-link" href="#scenza-main">{copy.skip}</a>
     <header className="scenza-header"><div className="scenza-container scenza-header-inner"><a href="/" className="scenza-brand" aria-label="SCENZA"><Logo subtitle={copy.brandSubtitle} /></a><nav className="scenza-desktop-nav" aria-label={copy.nav.features}>{links.map((link) => <a key={link.id} href={`#${link.id}`}>{link.label}</a>)}</nav><div className="scenza-header-actions">{languageControl}{accountButton}<Button size="sm" onClick={() => openAuth('register')}>{account ? (language === 'ru' ? 'В студию' : 'Open studio') : copy.start}<ArrowUpRight size={15} /></Button></div>{account && <div className="scenza-mobile-account">{accountButton}</div>}<button ref={menuButton} className="scenza-menu-button" aria-expanded={menuOpen} aria-controls="scenza-mobile-nav" aria-label={menuOpen ? copy.close : copy.menu} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X /> : <Menu />}</button></div>
@@ -141,7 +144,7 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
     </header>
     <main id="scenza-main" tabIndex={-1}>
       <Spotlight />
-      <section id="hero" tabIndex={-1} data-section-label={language === 'ru' ? 'Главная' : 'Home'} className="scenza-hero"><BackgroundPaths className="scenza-hero-paths" /><div className="scenza-container scenza-hero-grid"><div className="scenza-hero-copy"><AnimatedHeadline text={copy.hero.title} className="scenza-hero-title" /><p>{copy.hero.subtitle}</p><div className="scenza-hero-buttons"><Button size="lg" onClick={() => openAuth('register')}>{copy.hero.primary}<ArrowRight size={20} /></Button></div></div><RobotVideo language={language} greeting={copy.hero.greeting} start={robotSettled} onSettled={finishLoading} /></div></section>
+      <section id="hero" tabIndex={-1} data-section-label={language === 'ru' ? 'Главная' : 'Home'} className="scenza-hero"><BackgroundPaths className="scenza-hero-paths" /><div className="scenza-container scenza-hero-grid"><div className="scenza-hero-copy"><AnimatedHeadline text={copy.hero.title} className="scenza-hero-title" /><p>{copy.hero.subtitle}</p><div className="scenza-hero-buttons"><Button size="lg" onClick={() => openAuth('register')}>{copy.hero.primary}<ArrowRight size={20} /></Button></div></div><SplineScene language={language} greeting={copy.hero.greeting} start={loaderGone} onSettled={finishLoading} /></div></section>
 
       <section id="examples" tabIndex={-1} data-section-label={language === 'ru' ? 'Примеры' : 'Examples'} className="scenza-container scenza-examples"><div className="scenza-section-title"><div><h2>{copy.examples.title}</h2><p>{copy.examples.description}</p></div><span className="scenza-demo-badge"><Film size={14} />{copy.examples.badge}</span></div><div className="scenza-examples-grid">{examples.map((example, index) => <VideoExample key={example.id} id={example.id} duration={example.duration} title={copy.examples.names[index]} type={copy.examples.types[index]} watch={copy.examples.watch} language={language} onExpand={() => setVideoIndex(index)} />)}<aside className="scenza-platform-panel"><h3>{copy.platforms.title}</h3><p>{copy.platforms.description}</p><div className="scenza-platforms">
 <span className="scenza-platform scenza-platform-tiktok"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16 2h-3v13a3 3 0 1 1-3-3V9a6 6 0 1 0 6 6V8a8 8 0 0 0 5 2V7a5 5 0 0 1-5-5Z" /></svg>TikTok</span>

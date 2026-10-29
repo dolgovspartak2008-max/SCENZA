@@ -9,13 +9,18 @@ const FINISH_MS = 520;
 const FADE_MS = 450;
 const REDUCED_FADE_MS = 150;
 
-export function PageLoader({ open, onContinue, language = 'ru' }: { open: boolean; onContinue: () => void; language?: 'ru' | 'en' }) {
+export function PageLoader({ open, onContinue, onClosed, language = 'ru' }: { open: boolean; onContinue: () => void; onClosed?: () => void; language?: 'ru' | 'en' }) {
   const [mounted, setMounted] = useState(open);
   const [closing, setClosing] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   const continueRef = useRef(onContinue);
   continueRef.current = onContinue;
   const ru = language === 'ru';
+  const closedRef = useRef(onClosed);
+  closedRef.current = onClosed;
+
+  // Reports the moment the overlay has fully faded out and left the page, so the hero can start its intro.
+  useEffect(() => { if (!mounted) closedRef.current?.(); }, [mounted]);
 
   // A hard deadline so a stuck 3D scene can never keep people out of the site.
   useEffect(() => {

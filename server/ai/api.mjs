@@ -8,7 +8,7 @@ import { createStorage } from './storage.mjs';
 import { fail, normalizeSettings, normalizeAd, timelineDuration } from './render.mjs';
 const AD_FIELDS = ['position','width','height','fill','fit','start','duration','opacity','offsetX','offsetY','fade','background','backgroundColor'];
 import { PRIMARY_VIDEO_MODEL, ANALYSIS_VERSION } from './openai.mjs';
-import { createTokens, LOCAL_OWNER } from './tokens.mjs';
+import { createTokens, LOCAL_OWNER, sourceTooLong, SOURCE_TOO_LONG, MAX_SOURCE_SECONDS } from './tokens.mjs';
 
 const MAX_FILE = 20 * 1024 ** 3, CHUNK = 8 * 1024 ** 2;
 const projectView = ({analysis,analysisWindows,analysisResult,analysisCache,sourceFingerprint,editCache,adPreviewJobId,...project}) => project;
@@ -118,7 +118,7 @@ export async function createVideoApi({ dataDir, env = process.env }) {
         if (!(await store.listProjects(ownerId)).some(project => readyClips(project).length)) throw fail('Сначала подготовьте и опубликуйте ролик из SCENZA.', 409);
         send(response, await tokens.publicationBonus(ownerId, (await json(request)).url)); return true;
       }
-      if (route === '/api/video/config' && method === 'GET') { send(response, { aiReady: !!env.OPENROUTER_API_KEY?.trim(), maxFileSize: MAX_FILE, chunkSize: CHUNK }); return true; }
+      if (route === '/api/video/config' && method === 'GET') { send(response, { aiReady: !!env.OPENROUTER_API_KEY?.trim(), maxFileSize: MAX_FILE, chunkSize: CHUNK, maxSourceSeconds: MAX_SOURCE_SECONDS }); return true; }
       if (route === '/api/video/projects' && method === 'GET') { const projects = await store.listProjects(ownerId), numbers = projectNumbers(projects); send(response, { projects: projects.map(project => ({ ...projectView(project), title: projectTitle(numbers.get(project.id) || 1) })) }); return true; }
       if (route === '/api/video/import' && method === 'POST') {
         const body = await json(request);
@@ -173,6 +173,7 @@ export async function createVideoApi({ dataDir, env = process.env }) {
         const source=createHash('sha256').update(JSON.stringify([project.sourceFingerprint,project.files.original?.key,project.upload?.size,project.duration])).digest('hex');
         const currentCache=!project.analysisCache||(project.analysisCache.source===source&&project.analysisCache.version===ANALYSIS_VERSION&&project.analysisCache.model===(env.PRIMARY_VIDEO_MODEL||PRIMARY_VIDEO_MODEL));
         if (currentCache && project.candidates.length && project.candidates.every(candidate=>candidate.ready&&project.files[candidate.id])) { send(response,{project:await view(ownerId,project),cached:true}); return true; }
+        if (!project.candidates.length && sourceTooLong(project.duration)) throw fail(SOURCE_TOO_LONG,413);
         if (!project.candidates.length && !env.OPENROUTER_API_KEY?.trim()) throw fail('AI-анализ пока не подключён. Администратору нужно настроить ключ сервиса.',503);
         if (!project.files.original) throw fail('Сначала загрузите и подготовьте видео.',409);
         send(response,{job:await queue(ownerId,project,'analyze')},202); return true;
