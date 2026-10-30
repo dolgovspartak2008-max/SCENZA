@@ -68,29 +68,41 @@
 .breadcrumbs a[aria-current="page"] { color: var(--subtle); }
 .avatar { padding: 0; display: grid; place-items: center; }
 .app-header .avatar img { transform: none; object-position: center; }
-.scenza-dialog.support-dialog { position: fixed; inset: 0; margin: auto; width: min(560px, calc(100% - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 60px 24px 24px; color: #edf3fa; background: #11212c; border: 1px solid #486b82; border-radius: 12px; }
-.support-dialog::backdrop { background: #030b13bc; }
-.support-dialog .scenza-dialog-close { position: absolute; top: 10px; right: 12px; display: grid; place-items: center; width: 44px; height: 44px; }
-.support-dialog h2 { font-size: 1.5rem; }
-.support-intro { margin: 10px 0 22px; color: #b6cadd; }
-.support-dialog form { display: grid; gap: 10px; }
-.support-dialog label { font-size: .9rem; }
-.support-dialog textarea { width: 100%; padding: 12px; resize: vertical; line-height: 1.5; font-size: 1rem; }
-.support-dialog small, .support-ticket-meta, .support-reply time { color: #b6cadd; font-size: .78rem; }
-.support-dialog .button { min-height: 44px; }
-.support-dialog form .button { justify-self: start; }
+/* Support chat: rounded card, filled round close, roomy form with a character counter, tickets with status pills and reply cards. */
+.scenza-dialog.support-dialog { position: fixed; inset: 0; margin: auto; width: min(560px, calc(100% - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 36px 28px 28px; color: #edf3f5; background: linear-gradient(180deg, #0d1f24, #091519); border: 1px solid #22393f; border-radius: 30px; box-shadow: 0 30px 90px #000b; }
+.support-dialog::backdrop { background: #01080dcc; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.support-dialog .scenza-dialog-close { position: absolute; top: 22px; right: 22px; display: grid; place-items: center; width: 50px; height: 50px; border-radius: 50%; background: #1a2d32; color: #eef6f7; }
+.support-dialog .scenza-dialog-close:hover { background: #243d43; }
+.support-dialog h2 { margin: 0; padding-right: 64px; font-size: 1.65rem; font-weight: 800; line-height: 1.15; letter-spacing: -.02em; }
+.support-intro { margin: 10px 0 22px; color: #93abb1; font-size: .94rem; line-height: 1.5; }
+.scenza-dialog.support-dialog form { display: grid; gap: 0; margin: 0; }
+.support-dialog label { margin-bottom: 10px; color: #e3eef0; font-size: .95rem; }
+.support-dialog textarea { width: 100%; min-height: 116px; padding: 14px 16px; resize: vertical; border: 1px solid #2b4248; border-radius: 18px; background: #071216; color: #f1f7f8; font-size: 1rem; line-height: 1.5; }
+.support-dialog textarea:focus { border-color: var(--accent); outline: none; }
+.support-counter { justify-self: end; margin-top: 8px; color: #93abb1; font-size: .85rem; font-variant-numeric: tabular-nums; }
+.support-dialog form .button { justify-self: stretch; gap: 12px; min-height: 52px; margin-top: 14px; border-radius: 999px; font-size: 1rem; font-weight: 700; }
 .support-dialog button:disabled { opacity: .55; cursor: not-allowed; }
 .support-error { color: #ffc6ba; margin-top: 16px; }
 .support-notice { color: #a2edc5; margin-top: 12px; }
-.support-list-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 24px 0 16px; }
-.support-list-heading h3 { font-size: 1rem; }
+.support-notice:empty { display: none; }
+.support-list-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 30px 0 0; padding-bottom: 18px; border-bottom: 1px solid #1f3439; }
+.support-list-heading h3 { margin: 0; font-size: 1.25rem; font-weight: 800; letter-spacing: -.01em; }
+.support-list-heading .button { flex-shrink: 0; gap: 8px; min-height: 42px; padding: 0 16px; border: 1px solid #30484e; border-radius: 999px; background: transparent; color: #e7f0f2; font-size: .88rem; font-weight: 600; }
+.support-list-heading .button:hover:not(:disabled) { border-color: #4a6a71; background: #ffffff0a; }
 .support-tickets { list-style: none; margin: 0; padding: 0; }
-.support-tickets li { border-top: 1px solid #365061; padding: 18px 0; }
-.support-ticket-meta { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 6px 12px; }
-.support-tickets p { white-space: pre-wrap; overflow-wrap: anywhere; margin-top: 10px; line-height: 1.5; }
-.support-reply { margin-top: 16px; padding-left: 14px; border-left: 2px solid #89d6bd; }
-.support-reply strong { font-size: .9rem; }
-.support-reply time { display: block; margin-top: 8px; }
+.support-tickets li { padding: 18px 0 20px; }
+.support-tickets li + li { border-top: 1px solid #1f3439; }
+.support-ticket-meta { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 12px; color: #93abb1; font-size: .85rem; }
+.support-status { padding: 4px 12px; border-radius: 999px; background: #1f3237; color: #c3d3d7; font-size: .8rem; }
+.support-status[data-status=answered] { background: #0f3a33; color: #5ff0d2; }
+.support-status[data-status=closed] { background: #1b2629; color: #8ea3a8; }
+.support-tickets p { margin: 10px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; color: #eef6f7; font-size: .98rem; line-height: 1.5; }
+.support-reply { margin-top: 14px; padding: 14px 16px; border: 1px solid #22393f; border-radius: 18px; background: #12242a; }
+.support-reply > div { display: flex; justify-content: space-between; gap: 12px; }
+.support-reply strong { font-size: .86rem; }
+.support-reply time { color: #93abb1; font-size: .82rem; }
+.support-reply p { margin-top: 6px; font-size: .92rem; }
+@media (max-width: 650px) { .scenza-dialog.support-dialog { padding: 30px 22px 24px; border-radius: 28px; } .support-dialog h2 { font-size: 1.55rem; } .support-dialog .scenza-dialog-close { top: 18px; right: 16px; } }
 @media(max-width:1100px) { .clips-grid { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media(max-width:800px) { .settings-layout { grid-template-columns: minmax(0,1fr); } }
 @media(max-width:650px) {

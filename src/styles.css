@@ -342,6 +342,7 @@ input[type="range"] { accent-color: var(--accent); cursor: pointer; min-width: 2
 .skip-link { position: fixed; z-index: 200; left: 20px; top: -100px; background: #87cfff; color: #091a27; padding: 12px; border-radius: 4px; }
 .skip-link:focus { top: 12px; }
 .mobile-menu, .close-menu, .menu-backdrop { display: none; }
+.sidebar-section { display: none; }
 .not-found { min-height: 60vh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 20px; }
 .not-found > svg { color: var(--accent); }
 
@@ -492,18 +493,27 @@ input[type="range"] { accent-color: var(--accent); cursor: pointer; min-width: 2
 }
 
 @media (max-width: 650px) {
-  .sidebar { width: 250px; transform: translateX(-100%); visibility: hidden; padding: 20px 10px; }
+  /* Mobile drawer: a floating rounded panel with large pill items and an "Account" group at the bottom. */
+  .sidebar { inset: 8px auto 8px 8px; width: min(300px, calc(100vw - 64px)); transform: translateX(calc(-100% - 16px)); visibility: hidden; padding: 26px 14px 16px; overflow-y: auto; border: 1px solid #1f383d; border-radius: 30px; background: linear-gradient(180deg, #0c1f24, #08161a); box-shadow: 0 30px 80px #000b; }
   .sidebar.is-open { transform: translateX(0); visibility: visible; }
-  .sidebar-brand { margin: 0 8px 16px; padding-bottom: 25px; display: flex; align-items: center; }
+  .sidebar-brand { margin: 0 4px 28px 10px; padding: 0; border-bottom: 0; display: flex; align-items: center; }
   .brand { margin: 0; gap: 10px; }
   .logo-word { display: block; font-size: 1.65rem; }
   .logo-mark { width: 37px; }
-  .close-menu { display: inline-flex; margin-left: auto; }
-  .nav-item { justify-content: start; padding: 13px 15px; font-size: .94rem; }
+  .close-menu { display: inline-flex; flex-shrink: 0; width: 46px; height: 46px; margin-left: auto; border: 0; border-radius: 50%; background: #1a2e33; color: #eef6f7; }
+  .nav-item { justify-content: start; gap: 20px; min-height: 50px; margin: 4px 0; padding: 0 18px; border-radius: 999px; color: #eef6f7; font-size: 1rem; }
+  .nav-item svg { width: 22px; height: 22px; flex-shrink: 0; color: #d9e6e9; }
+  .nav-item:hover { background: #ffffff0d; }
+  .nav-item.active { background: #45f0d61f; color: var(--accent); }
+  .nav-item.active svg { color: var(--accent); }
+  .nav-item.active::before { display: none; }
+  .sidebar-section { display: block; margin: 0 10px 8px; color: #7d959b; font-size: .92rem; }
+  .sidebar .logo-word { font-size: 1.75rem; }
+  .sidebar .logo-mark { width: 42px; height: 42px; }
   .nav-item > span, .telegram-link > span { display: block; }
   .telegram-link { justify-content: start; margin: 0 10px 20px; gap: 20px; font-size: .9rem; }
-  .sidebar-bottom { padding-top: 20px; }
-  .menu-backdrop { display: block; position: fixed; inset: 0; background: #020912c7; z-index: 29; cursor: default; }
+  .sidebar-bottom { margin: auto 4px 0; padding-top: 18px; border-top: 1px solid #1d3439; }
+  .menu-backdrop { display: block; position: fixed; inset: 0; background: #01080dcc; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); z-index: 29; cursor: default; }
   .workspace { margin-left: 0; }
   .app-header { padding: 0 15px 0 10px; height: 56px; gap: 10px; }
   .mobile-menu { display: inline-flex; }

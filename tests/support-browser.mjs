@@ -35,7 +35,7 @@ try {
     await trigger.click({ timeout: 5000 });
     const dialog = page.getByRole('dialog', { name: 'Поддержка SCENZA' });
     await dialog.getByText('У вас пока нет обращений.').waitFor();
-    const input = dialog.getByRole('textbox', { name: 'Ваше сообщение' });
+    const input = dialog.getByRole('textbox', { name: 'Новое обращение' });
     const submit = dialog.getByRole('button', { name: 'Отправить' });
     assert.equal(await submit.isDisabled(), true);
     await input.fill('   ');
@@ -49,7 +49,7 @@ try {
     await dialog.getByText('Обращение отправлено.').waitFor();
     assert.equal(await input.inputValue(), '');
     await dialog.getByText('Не получается загрузить видео.', { exact: true }).waitFor();
-    await dialog.getByText('Новое обращение', { exact: true }).waitFor();
+    await dialog.locator('.support-status').getByText('Новое', { exact: true }).waitFor();
     tickets[0] = { ...tickets[0], status: 'answered', replies: [{ text: 'Попробуйте файл MP4.', createdAt: new Date().toISOString() }, { text: 'Если ошибка останется, сообщите размер файла.', createdAt: new Date().toISOString() }] };
     await dialog.getByRole('button', { name: 'Обновить' }).click();
     await dialog.getByText('Попробуйте файл MP4.', { exact: true }).waitFor();
