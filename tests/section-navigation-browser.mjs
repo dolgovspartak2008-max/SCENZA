@@ -45,17 +45,7 @@ try {
   await page.locator('#examples').focus();
   await page.keyboard.press('ArrowDown');
   await settled();
-  assert.equal(await current(), '#demo');
-  const before = await page.evaluate(() => scrollY);
-  await page.mouse.move(1400, 400);
-  await page.waitForTimeout(240);
-  await page.mouse.wheel(0, 70);
-  await page.waitForTimeout(200);
-  assert.equal(await current(), '#demo', 'Tall section remains active while reading');
-  assert.ok(await page.evaluate(() => scrollY) > before, 'Tall content scrolls naturally');
-  await page.locator('.pd-seek').focus();
-  await page.keyboard.press('ArrowRight');
-  assert.equal(await current(), '#demo', 'Slider keyboard input does not navigate');
+  assert.equal(await current(), '#workflow');
   await go('pricing');
   await page.locator('.scenza-price-card').first().waitFor();
   await page.evaluate(() => window.scrollTo({ top: document.querySelector('#examples').offsetTop - 106, behavior: 'instant' }));

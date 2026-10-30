@@ -59,7 +59,7 @@ try {
     await page.screenshot({ path: `tmp/ui-checks/hero-flow-${width}.png` });
   }
   await page.locator('.scenza-hero-buttons').getByRole('button', { name: 'Начать бесплатно' }).click();
-  await page.getByRole('dialog', { name: 'Регистрация', exact: true }).waitFor();
+  await page.getByRole('dialog', { name: 'Создать аккаунт', exact: true }).waitFor();
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log('PASS particles, cursor light, reduced motion, desktop/tablet/mobile, single free-start CTA opens registration');
 } finally { await browser.close(); }

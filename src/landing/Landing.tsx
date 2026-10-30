@@ -1,5 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowRight, Play, Menu, X, Plus, ScanLine, Captions, RectangleVertical, Download, Film, ArrowUpRight, Maximize, Infinity as InfinityIcon, CirclePause, Clapperboard, Hash, Coins, Gift } from 'lucide-react';
+import { ArrowRight, Play, Menu, X, Plus, Film, ArrowUpRight, ChevronRight, Maximize, Infinity as InfinityIcon, CirclePause, Clapperboard, Hash, Coins, Gift } from 'lucide-react';
 import { Logo } from '../Icon';
 import { ShinyButton as Button } from '@/components/ui/shiny-button';
 import { PageLoader } from '@/components/ui/page-loader';
@@ -8,7 +8,6 @@ import { Dialog } from '@/components/ui/dialog';
 import { BackgroundPaths, AnimatedHeadline } from '@/components/ui/background-paths';
 import { ParticleBackground } from '@/components/ui/particle-background';
 import { content } from './content';
-import { ProductDemo } from './ProductDemo';
 import { RobotVideo } from '@/components/ui/robot-video';
 import { Spotlight } from '@/components/ui/spotlight';
 import { parseSelection } from './plans';
@@ -28,9 +27,7 @@ const examples = [
   { id: 'platform-example-3', duration: '01:42' },
   { id: 'platform-example-4', duration: '00:39' },
 ];
-const featureIcons = [ScanLine, Captions, RectangleVertical, Download];
 const advantageIcons = [InfinityIcon, CirclePause, Clapperboard, Hash, Coins];
-export const isLocalStudio = () => ['localhost', '127.0.0.1', '[::1]'].includes(location.hostname);
 
 function VideoExample({ id, duration, title, type, watch, language, onExpand }: { id: string; duration: string; title: string; type: string; watch: string; language: Language; onExpand: () => void }) {
   const video = useRef<HTMLVideoElement>(null);
@@ -71,11 +68,11 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
   const [authOpen, setAuthOpen] = useState(requestAccess);
   const [authMode, setAuthMode] = useState<'login' | 'register'>(requestAccess ? 'login' : 'register');
   const [videoIndex, setVideoIndex] = useState<number | null>(null);
-  const [demoNotice, setDemoNotice] = useState(false);
   const [planNotice, setPlanNotice] = useState<PlanId | null>(null);
   const [inviteCopied, setInviteCopied] = useState(false);
   const [faqOpen, setFaqOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
+  const menuClose = useRef<HTMLButtonElement>(null);
   const authFocus = useRef<HTMLElement | null>(null);
   const pricingRef = useRef<HTMLElement>(null);
   const [pricingVisible, setPricingVisible] = useState(false);
@@ -93,11 +90,16 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
     observer.observe(element); return () => observer.disconnect();
   }, []);
   useEffect(rememberReferral, []);
+  // The mobile menu is a modal card: focus moves into it, the page behind does not scroll, Escape closes it.
   useEffect(() => {
     if (!menuOpen) return;
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    menuClose.current?.focus();
     const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') { setMenuOpen(false); menuButton.current?.focus(); } };
-    document.addEventListener('keydown', onKey); return () => document.removeEventListener('keydown', onKey);
+    document.addEventListener('keydown', onKey); return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = overflow; };
   }, [menuOpen]);
+  function closeMenu() { setMenuOpen(false); menuButton.current?.focus(); }
 
   useEffect(() => {
     if (authOpen) return;
@@ -127,18 +129,22 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
     catch { setInviteCopied(false); }
   }
   function choosePlan(planId: PlanId) { if (account && planId !== 'trial') { updatePlan({ planId, period: 'month' }); setPlanNotice(planId); return; } openAuth('register', { planId, period: 'month' }); }
-  const links = [{ id: 'demo', label: copy.nav.features }, { id: 'workflow', label: copy.nav.how }, { id: 'pricing', label: copy.nav.pricing }, { id: 'faq', label: copy.nav.faq }];
+  const links = [{ id: 'advantages', label: copy.nav.features }, { id: 'workflow', label: copy.nav.how }, { id: 'pricing', label: copy.nav.pricing }, { id: 'faq', label: copy.nav.faq }];
   const languageControl = <div className="scenza-language" role="group" aria-label={copy.languageLabel}><button onClick={() => setLanguage('ru')} aria-pressed={language === 'ru'} lang="ru">RU</button><button onClick={() => setLanguage('en')} aria-pressed={language === 'en'} lang="en">EN</button></div>;
 
   const accountButton = account ? <ProfileMenu account={account} language={language} onLanguageChange={setLanguage} onAccountChange={setAccount} onPricing={() => { setMenuOpen(false); document.getElementById('pricing')?.scrollIntoView({ behavior: matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' }); }} /> : <Button variant="outline" size="sm" onClick={() => openAuth('login')}>{copy.login}</Button>;
   return <div className="scenza-landing" inert={!robotSettled}>
     <ParticleBackground />
     <PageLoader open={!robotSettled} onContinue={finishLoading} language={language} />
-    <SectionNavigation language={language} disabled={!robotSettled || authOpen || menuOpen || videoIndex !== null || demoNotice} />
+    <SectionNavigation language={language} disabled={!robotSettled || authOpen || menuOpen || videoIndex !== null} />
     <a className="skip-link" href="#scenza-main">{copy.skip}</a>
-    <header className="scenza-header"><div className="scenza-container scenza-header-inner"><a href="/" className="scenza-brand" aria-label="SCENZA"><Logo subtitle={copy.brandSubtitle} /></a><nav className="scenza-desktop-nav" aria-label={copy.nav.features}>{links.map((link) => <a key={link.id} href={`#${link.id}`}>{link.label}</a>)}</nav><div className="scenza-header-actions">{languageControl}{accountButton}<Button size="sm" onClick={() => openAuth('register')}>{account ? (language === 'ru' ? 'В студию' : 'Open studio') : copy.start}<ArrowUpRight size={15} /></Button></div>{account && <div className="scenza-mobile-account">{accountButton}</div>}<button ref={menuButton} className="scenza-menu-button" aria-expanded={menuOpen} aria-controls="scenza-mobile-nav" aria-label={menuOpen ? copy.close : copy.menu} onClick={() => setMenuOpen(!menuOpen)}>{menuOpen ? <X /> : <Menu />}</button></div>
-      {menuOpen && <nav id="scenza-mobile-nav" className="scenza-mobile-nav" aria-label={copy.menu}>{links.map((link) => <a key={link.id} href={`#${link.id}`} onClick={() => setMenuOpen(false)}>{link.label}</a>)}<div>{languageControl}{accountButton}<Button onClick={() => openAuth('register')}>{copy.start}</Button></div></nav>}
+    <header className="scenza-header"><div className="scenza-container scenza-header-inner"><a href="/" className="scenza-brand" aria-label="SCENZA"><Logo subtitle={copy.brandSubtitle} /></a><nav className="scenza-desktop-nav" aria-label={copy.nav.features}>{links.map((link) => <a key={link.id} href={`#${link.id}`}>{link.label}</a>)}</nav><div className="scenza-header-actions">{languageControl}{accountButton}<Button size="sm" onClick={() => openAuth('register')}>{account ? (language === 'ru' ? 'В студию' : 'Open studio') : copy.start}<ArrowUpRight size={15} /></Button></div>{account && <div className="scenza-mobile-account">{accountButton}</div>}<button ref={menuButton} className="scenza-menu-button" aria-expanded={menuOpen} aria-controls="scenza-mobile-nav" aria-label={copy.menu} onClick={() => setMenuOpen(true)}><Menu /></button></div>
     </header>
+    {menuOpen && <div className="scenza-mobile-menu" onClick={event => { if (event.target === event.currentTarget) closeMenu(); }}><nav id="scenza-mobile-nav" className="scenza-mobile-nav" aria-label={copy.menu}>
+      <div className="scenza-mobile-nav-head"><a href="/" className="scenza-brand" aria-label="SCENZA"><Logo subtitle={copy.brandSubtitle} /></a><button ref={menuClose} type="button" className="scenza-mobile-nav-close" aria-label={copy.close} onClick={closeMenu}><X size={28} strokeWidth={1.6} /></button></div>
+      <ul>{links.map((link) => <li key={link.id}><a href={`#${link.id}`} onClick={() => setMenuOpen(false)}>{link.label}<ChevronRight size={22} strokeWidth={1.6} aria-hidden="true" /></a></li>)}</ul>
+      <div className="scenza-mobile-nav-foot">{account ? <div className="scenza-mobile-nav-account">{accountButton}</div> : <Button variant="outline" size="lg" onClick={() => openAuth('login')}>{copy.login}</Button>}<Button size="lg" className="scenza-mobile-nav-start" onClick={() => openAuth('register')}>{account ? (language === 'ru' ? 'В студию' : 'Open studio') : copy.start}<ArrowUpRight size={24} strokeWidth={1.8} /></Button>{languageControl}</div>
+    </nav></div>}
     <main id="scenza-main" tabIndex={-1}>
       <Spotlight />
       <section id="hero" tabIndex={-1} data-section-label={language === 'ru' ? 'Главная' : 'Home'} className="scenza-hero"><BackgroundPaths className="scenza-hero-paths" /><div className="scenza-container scenza-hero-grid"><div className="scenza-hero-copy"><AnimatedHeadline text={copy.hero.title} className="scenza-hero-title" /><p>{copy.hero.subtitle}</p><div className="scenza-hero-buttons"><Button size="lg" onClick={() => openAuth('register')}>{copy.hero.primary}<ArrowRight size={20} /></Button></div></div><RobotVideo language={language} greeting={copy.hero.greeting} start={robotSettled} onSettled={finishLoading} /></div></section>
@@ -149,8 +155,6 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
 <span className="scenza-platform scenza-platform-youtube"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="4" width="22" height="16" rx="5" fill="currentColor"/><path d="m10 8 6 4-6 4Z" fill="white"/></svg>YouTube Shorts</span>
 <span className="scenza-platform scenza-platform-telegram"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="11" fill="currentColor"/><path d="m5 11 13-5-2.5 12-4-3-2 2 .5-4 6-5-8 4Z" fill="white"/></svg>Telegram</span>
 </div><span className="scenza-format-note">9:16 <i /> 1:1 <i /> 16:9</span></aside></div></section>
-
-      <section id="demo" tabIndex={-1} data-section-label={copy.nav.features} className="scenza-demo-section"><div className="scenza-container"><div className="scenza-section-title"><div><h2>{copy.workspace.title}</h2><p>{copy.workspace.description}</p></div></div><ProductDemo variant="wide" copy={copy.demo} lang={language} onAction={() => { if (isLocalStudio()) location.assign('/app'); else setDemoNotice(true); }} /><div id="features" tabIndex={-1} className="scenza-feature-strip">{copy.workspace.features.map((label, index) => { const FeatureIcon = featureIcons[index]; return <div key={index}><span className="scenza-feature-icon"><FeatureIcon size={23} /></span><div><h3>{label}</h3><p>{copy.workspace.details[index]}</p></div></div>; })}</div></div></section>
 
       <section id="workflow" tabIndex={-1} data-section-label={copy.nav.how} aria-labelledby="workflow-title" className="scenza-container scenza-workflow">
         <div className="scenza-workflow-intro"><h2 id="workflow-title">{copy.automation.title}</h2><p>{copy.automation.description}</p></div>
@@ -169,9 +173,8 @@ export default function Landing({ requestAccess = false }: { requestAccess?: boo
     </main>
     <footer className="scenza-footer"><div className="scenza-container scenza-legal-footer"><LegalLinks language={language} /><p>Самозанятый Долгов Спартак Сергеевич · ИНН 026617773364<br /><a href="mailto:artemnikov200777@gmail.com">artemnikov200777@gmail.com</a></p></div></footer>
 
-    <AuthModal account={account} onAccountChange={setAccount} open={authOpen} mode={authMode} setMode={setAuthMode} close={() => setAuthOpen(false)} copy={copy} selection={selection} onPlanChange={updatePlan} restoreFocus={authFocus.current} onDemo={() => { setAuthOpen(false); requestAnimationFrame(() => document.getElementById('demo')?.scrollIntoView()); }} />
+    <AuthModal account={account} onAccountChange={setAccount} open={authOpen} mode={authMode} setMode={setAuthMode} close={() => setAuthOpen(false)} copy={copy} restoreFocus={authFocus.current} />
     <Dialog open={videoIndex !== null} onClose={() => setVideoIndex(null)} title={videoIndex === null ? copy.examples.watch : copy.examples.names[videoIndex]} closeLabel={copy.close} className="scenza-video-dialog">{videoIndex !== null && <><span className="scenza-demo-badge">{copy.examples.badge}</span><h2>{copy.examples.names[videoIndex]}</h2><video controls autoPlay playsInline preload="metadata" poster={`/videos/${examples[videoIndex].id}.jpg`} src={`/videos/${examples[videoIndex].id}.mp4`} aria-label={copy.examples.names[videoIndex]} /><p>{copy.examples.types[videoIndex]}</p></>}</Dialog>
-    <Dialog open={demoNotice} onClose={() => setDemoNotice(false)} title={copy.demoNotice.title} closeLabel={copy.close}><div className="scenza-information"><Film size={29} /><h2>{copy.demoNotice.title}</h2><p>{copy.demoNotice.text}</p><Button onClick={() => setDemoNotice(false)}>{copy.demoNotice.button}</Button></div></Dialog>
     <Dialog open={planNotice !== null} onClose={() => setPlanNotice(null)} title={planNotice ? copy.pricing.plans[planNotice].name : copy.nav.pricing} closeLabel={copy.close}>{planNotice && <div className="scenza-information"><Film size={29} /><h2>{language === 'ru' ? `Тариф «${copy.pricing.plans[planNotice].name}»` : `${copy.pricing.plans[planNotice].name} plan`}</h2><p>{language === 'ru' ? `Онлайн-оплата пока не подключена. Напишите нам в Telegram: администратор подключит тариф (${demoPlans.find(plan => plan.id === planNotice)?.tokens} токенов) после оплаты. Без подтверждения администратора тариф не активируется.` : `Online payment is not connected yet. Message us on Telegram and the administrator will activate the plan (${demoPlans.find(plan => plan.id === planNotice)?.tokens} tokens) after payment. A plan is never activated without the administrator.`}</p><Button asChild><a href="https://t.me/SCENZA_BOT" target="_blank" rel="noopener noreferrer">{language === 'ru' ? 'Написать в Telegram' : 'Message us on Telegram'}</a></Button></div>}</Dialog>
   </div>;
 }

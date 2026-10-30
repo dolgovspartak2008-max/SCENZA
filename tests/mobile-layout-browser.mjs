@@ -48,7 +48,8 @@ try {
     if (width <= 1000) {
       await page.locator('.scenza-menu-button').click();
       const menu = page.locator('#scenza-mobile-nav');
-      check((await menu.boundingBox()).height <= 245, `Compact menu at ${width}px`);
+      const menuBox = await menu.boundingBox();
+      check(menuBox.y >= 0 && menuBox.y + menuBox.height <= 900, `Menu card fits the screen at ${width}px`);
       check(await menu.locator('a').count() === 4, 'All navigation destinations retained');
       check(await menu.getByRole('button', { name: 'Войти', exact: true }).isVisible(), 'Login visible');
       await page.screenshot({ path: `tmp/ui-checks/mobile-menu-${width}.png` });
@@ -56,11 +57,11 @@ try {
     } else {
       await page.locator('.scenza-header-actions').getByRole('button', { name: 'Начать', exact: true }).click();
     }
-    const dialog = page.getByRole('dialog', { name: 'Регистрация', exact: true });
+    const dialog = page.getByRole('dialog', { name: 'Создать аккаунт', exact: true });
     await dialog.waitFor();
     const box = await dialog.boundingBox();
     const close = await dialog.locator('.scenza-dialog-close').boundingBox();
-    const tabs = await dialog.locator('.scenza-auth-tabs').boundingBox();
+    const tabs = await dialog.locator('.scenza-auth-methods').boundingBox();
     check(close.width >= 44 && close.height >= 44, `Close touch target at ${width}px`);
     check(close.y + close.height + 6 <= tabs.y, `Close/focus outline stays above tabs at ${width}px`);
     check(close.x + close.width + 6 < box.x + box.width, `Close stays inside dialog at ${width}px`);

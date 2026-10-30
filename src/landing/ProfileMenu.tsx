@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState } from 'react';
-import { ArrowRight, ChevronRight, Coins, Gift, LogOut, Send, UserRound } from 'lucide-react';
+import { ArrowRight, ChevronDown, ChevronRight, Coins, Gift, LogOut, Send, UserRound } from 'lucide-react';
 import { NotificationBell } from '../Notifications';
 import { ShinyButton as Button } from '@/components/ui/shiny-button';
 import { authRequest } from './auth';
@@ -82,7 +82,7 @@ export function ProfileMenu({ account, language, onLanguageChange, onAccountChan
   }
 
   return <><NotificationBell className="scenza-notify" onOpen={item => { location.href = item.link || '/app/profile?tab=notifications'; }} /><div ref={root} className="scenza-profile">
-    <Button ref={button} variant="outline" size="sm" className="scenza-account-button" title={label} aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)}><UserRound size={17} /><span>{label}</span></Button>
+    <Button ref={button} variant="outline" size="sm" className="scenza-account-button" title={label} aria-expanded={open} aria-controls={panelId} onClick={() => setOpen(!open)}><UserRound size={17} /><span>{label}</span><ChevronDown className="scenza-account-chevron" size={20} aria-hidden="true" /></Button>
     {open && <div id={panelId} className="scenza-profile-panel" role="region" aria-label={t('Профиль', 'Profile')}>
       <div className="scenza-profile-head"><span className="scenza-profile-avatar" aria-hidden="true">{label.slice(0, 1).toUpperCase()}</span><div><strong>{label}</strong>{account.email && <small>{account.email}</small>}</div></div>
       <div className="scenza-profile-access" data-active={account.accessActive}>

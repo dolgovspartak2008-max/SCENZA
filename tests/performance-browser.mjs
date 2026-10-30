@@ -31,17 +31,6 @@ try {
     if (initialVideos.length) failures.push(`${width}: videos fetched before interaction: ${initialVideos.join(', ')}`);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await page.screenshot({ path: `tmp/performance-checks/landing-${width}.png` });
-    const demo = page.locator('.product-demo--wide');
-    await demo.scrollIntoViewIfNeeded();
-    await page.waitForFunction(() => document.querySelector('.pd-source').readyState >= 2);
-    await demo.getByRole('button', { name: 'Воспроизвести сцены', exact: true }).click();
-    await page.waitForFunction(() => document.querySelector('.pd-source').currentTime > .2);
-    await demo.getByRole('button', { name: 'Остановить просмотр сцен', exact: true }).click();
-    await demo.locator('.pd-scene').nth(2).click();
-    await page.waitForFunction(() => {
-      const video = document.querySelector('.pd-source');
-      return !video.seeking && Math.abs(video.currentTime - video.duration * 2 / 3) < .1;
-    });
     const example = page.locator('.scenza-example').first();
     await example.scrollIntoViewIfNeeded();
     await example.getByRole('button', { name: /^Смотреть видео:/ }).click();

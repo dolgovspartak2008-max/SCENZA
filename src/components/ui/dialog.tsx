@@ -26,5 +26,5 @@ export function Dialog({ open, onClose, title, closeLabel, className, children, 
     const first = controls[0], last = controls.at(-1);
     if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
     else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
-  }} onClick={(event) => { if (event.target === event.currentTarget) { const rect = event.currentTarget.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeRef.current(); } }}><button type="button" className="scenza-dialog-close" aria-label={closeLabel} onClick={onClose}><X size={21} /></button>{children}</dialog>;
+  }} onClick={(event) => { if (event.target === event.currentTarget) { const rect = event.currentTarget.getBoundingClientRect(); if (event.clientX < rect.left || event.clientX > rect.right || event.clientY < rect.top || event.clientY > rect.bottom) closeRef.current(); } }}><button type="button" className="scenza-dialog-close" aria-label={closeLabel} onClick={onClose}><X size={26} strokeWidth={1.6} /></button>{children}</dialog>;
 }

@@ -24,25 +24,6 @@ await page.route(/\/api\//, async route => {
 try {
   await page.goto(process.env.APP_URL || 'http://127.0.0.1:5173');
   await page.locator('.scenza-hero-robot').waitFor();
-  for (const variant of ['wide']) {
-    const demo = page.locator(`.product-demo--${variant}`);
-    assert.equal(await demo.locator('video.pd-source').count(), 1, `${variant}: preview must be a real video`);
-    await demo.getByRole('button', { name: 'Воспроизвести сцены', exact: true }).click();
-    await page.waitForFunction(v => document.querySelector(`.product-demo--${v} video`).currentTime > .3, variant);
-    assert.ok(await demo.locator('video').evaluate(v => v.videoWidth > 0 && !v.error));
-    await demo.getByRole('button', { name: 'Остановить просмотр сцен', exact: true }).click();
-    const paused = await demo.locator('video').evaluate(v => v.currentTime);
-    await page.waitForTimeout(350);
-    assert.equal(await demo.locator('video').evaluate(v => v.currentTime), paused);
-    await demo.locator('.pd-scene').nth(2).click();
-    await page.waitForFunction(v => Math.abs(document.querySelector(`.product-demo--${v} video`).currentTime - document.querySelector(`.product-demo--${v} video`).duration * 2 / 3) < .1, variant);
-    await demo.locator('video').evaluate(v => { v.currentTime = v.duration; });
-    await page.waitForFunction(() => { const v = document.querySelector('.pd-source'); return !v.seeking && Math.abs(v.currentTime - v.duration) < .01; });
-    await demo.getByRole('button', { name: 'Воспроизвести сцены', exact: true }).click();
-    await page.waitForFunction(v => { const video = document.querySelector(`.product-demo--${v} video`); return video.currentTime > .2 && video.currentTime < 3 && !video.paused; }, variant);
-    await demo.getByRole('button', { name: 'Остановить просмотр сцен', exact: true }).click();
-    console.log(`PASS ${variant}: decoded video, play, pause, seek, replay`);
-  }
   for (let index = 0; index < 4; index++) {
     const card = page.locator('.scenza-example').nth(index);
     assert.equal(await card.locator('video').count(), 1);
@@ -55,30 +36,7 @@ try {
   await page.locator('.scenza-example').first().getByRole('button', { name: /^Увеличить видео:/ }).click();
   await page.waitForFunction(() => document.querySelector('.scenza-video-dialog video')?.currentTime > .2);
   await page.getByRole('dialog').getByRole('button', { name: 'Закрыть', exact: true }).click();
-  const wide = page.locator('.product-demo--wide');
-  await wide.locator('.pd-seek').fill(String(Number((await wide.locator('video').evaluate(v => v.duration) - .3).toFixed(2))));
-  await wide.getByRole('button', { name: 'Воспроизвести сцены', exact: true }).click();
-  await page.waitForFunction(() => { const v = document.querySelector('.product-demo--wide video'); return v.paused && v.ended; });
-  await wide.locator('.pd-titlebar').getByRole('button', { name: 'Экспортировать', exact: true }).click();
-  const download = page.waitForEvent('download');
-  await page.getByRole('button', { name: 'Скачать кадр PNG', exact: true }).click();
-  assert.match((await download).suggestedFilename(), /\.png$/);
-  await page.getByRole('dialog').getByRole('button', { name: 'Закрыть', exact: true }).click();
-  const wav = Buffer.alloc(44 + 16000 * 2 * 2);
-  wav.write('RIFF'); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22); wav.writeUInt32LE(16000, 24); wav.writeUInt32LE(32000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(wav.length - 44, 40);
-  await wide.locator('.pd-rail').getByRole('button', { name: 'Звук', exact: true }).click();
-  await wide.locator('input[type=file]').setInputFiles({ name: 'test-audio.wav', mimeType: 'audio/wav', buffer: wav });
-  await wide.getByRole('button', { name: 'Воспроизвести сцены', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('.product-demo--wide audio')?.currentTime > .1);
-  await wide.locator('.pd-rail').getByRole('button', { name: 'Субтитры', exact: true }).click();
-  assert.equal(await wide.locator('audio').count(), 1);
-  await page.waitForFunction(() => document.querySelector('.product-demo--wide audio')?.ended);
-  await wide.locator('.pd-seek').fill('0');
-  await page.waitForFunction(() => { const audio = document.querySelector('.product-demo--wide audio'); return !audio.paused && audio.currentTime > .1 && audio.currentTime < 1; });
-  await wide.getByRole('button', { name: 'Остановить просмотр сцен', exact: true }).click();
-  await page.waitForFunction(() => document.querySelector('.product-demo--wide audio')?.paused);
-  assert.ok(await wide.locator('audio').evaluate(a => a.paused));
-  console.log('PASS expanded video, automatic end, PNG export, audio survives tabs and resumes after seeking');
+  console.log('PASS expanded video');
   assert.equal(await page.locator('.scenza-footer > div:not(.scenza-legal-footer)').count(), 0);
   assert.ok(await page.locator('.scenza-hero-paths path').count() >= 36);
   await page.evaluate(() => window.scrollTo(0, 0));

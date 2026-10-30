@@ -32,11 +32,13 @@ await page.route(/\/(api|media|downloads)\//, proxy);
 try {
   await page.goto(base);
   await page.getByRole('button', { name: 'Войти', exact: true }).first().click();
-  const dialog = page.getByRole('dialog', { name: 'Вход в систему' });
+  const dialog = page.getByRole('dialog', { name: 'С возвращением' });
   await dialog.waitFor();
   await page.waitForTimeout(300);
   assert.equal(await dialog.getByRole('link', { name: 'Открыть локальную студию', exact: true }).count(), 1);
-  assert.equal(await dialog.getByRole('button', { name: 'Войти через Telegram', exact: true }).isDisabled(), true);
+  await dialog.getByRole('tab', { name: 'Telegram', exact: true }).click();
+  assert.equal(await dialog.getByRole('button', { name: 'Продолжить в Telegram', exact: true }).isDisabled(), true);
+  await dialog.getByRole('tab', { name: 'Почта', exact: true }).click();
   await dialog.locator('#scenza-password').fill('sample-password');
   await dialog.getByRole('button', { name: 'Показать пароль', exact: true }).click();
   assert.equal(await dialog.locator('#scenza-password').getAttribute('type'), 'text');
@@ -54,12 +56,9 @@ try {
   assert.equal(await page.locator('.connection-error').count(), 0);
   await page.goto(base);
   await page.getByRole('button', { name: 'Войти', exact: true }).first().click();
-  await dialog.getByRole('tab', { name: 'Регистрация', exact: true }).click();
-  const registration = page.getByRole('dialog', { name: 'Регистрация', exact: true });
+  await dialog.getByRole('button', { name: 'Создать', exact: true }).click();
+  const registration = page.getByRole('dialog', { name: 'Создать аккаунт', exact: true });
   assert.equal(await registration.locator('input[type=checkbox]:checked').count(), 0);
-  await registration.locator('summary').click();
-  await registration.getByRole('radio').last().check();
-  assert.match(await registration.locator('summary').innerText(), /Бизнес/);
   await page.setViewportSize({ width: 390, height: 900 });
   assert.equal(await registration.evaluate(element => element.scrollWidth <= element.clientWidth + 1), true);
   await page.screenshot({ path: path.join(screenshots, 'register-mobile.png') });
@@ -71,20 +70,20 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${key} overflows`);
   }
   await page.screenshot({ path: path.join(screenshots, 'legal-mobile.png'), fullPage: true });
-  console.log('PASS: default-disabled login, password visibility, unchecked consents, plan selection, 7 legal pages, 320/390/768/1440 layouts');
+  console.log('PASS: default-disabled login, password visibility, unchecked consents, 7 legal pages, 320/390/768/1440 layouts');
 
   backend = connected;
   await page.setViewportSize({ width: 1440, height: 1080 });
   await page.goto(base);
   await page.getByRole('button', { name: 'Войти', exact: true }).first().click();
-  await page.getByRole('tab', { name: 'Регистрация', exact: true }).click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Создать', exact: true }).click();
   assert.equal(await registration.getByRole('link', { name: 'Открыть локальную студию', exact: true }).count(), 0);
   await registration.locator('#scenza-name').fill('Browser Test');
   await registration.locator('#scenza-email').fill('browser-test@example.com');
   await registration.locator('#scenza-password').fill('sample-password');
   await registration.getByRole('checkbox').nth(0).check();
   await registration.getByRole('checkbox').nth(1).check();
-  await registration.getByRole('button', { name: 'Создать аккаунт', exact: true }).click();
+  await registration.getByRole('button', { name: 'Продолжить', exact: true }).click();
   await registration.getByRole('link', { name: 'Открыть бота SCENZA', exact: true }).waitFor();
   assert.equal(inbox.length, 0, 'Email registration cannot bypass Telegram membership');
   const botLink = await registration.getByRole('link', { name: 'Открыть бота SCENZA', exact: true }).getAttribute('href');
@@ -93,7 +92,7 @@ try {
   assert.equal(verification.verificationOnly, true);
   await connected.auth.bots.confirmWebsiteLogin(botToken, 4242);
   await registration.getByText('Telegram подтверждён.', { exact: false }).waitFor();
-  await registration.getByRole('button', { name: 'Создать аккаунт', exact: true }).click();
+  await registration.getByRole('button', { name: 'Продолжить', exact: true }).click();
   await page.locator('#scenza-code').waitFor();
   assert.equal(inbox.length, 1);
   await page.locator('#scenza-code').fill(inbox[0].code);
@@ -126,7 +125,7 @@ try {
     await page.screenshot({ path: path.join(screenshots, `account-${width}.png`) });
   }
   await page.getByRole('button', { name: 'Выйти из аккаунта' }).click();
-  await page.getByRole('heading', { name: 'Вход в систему' }).waitFor();
+  await page.getByRole('heading', { name: 'С возвращением' }).waitFor();
   const storage = await page.evaluate(() => ({ ...localStorage }));
   assert.equal(JSON.stringify(storage).includes('sample-password'), false);
   assert.equal(JSON.stringify(storage).includes('scena_session'), false);

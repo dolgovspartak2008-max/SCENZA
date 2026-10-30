@@ -33,7 +33,7 @@ try {
     await page.getByRole('button', { name: 'Спартак', exact: true }).filter({ visible: true }).first().click();
     await dialog.waitFor();
     assert.equal(await accountHeading.count(), 1, 'Known account stays visible while session refresh is pending');
-    assert.equal(await dialog.locator('#scenza-auth-form, .scenza-auth-tabs').count(), 0, 'Login and registration never flash for a known account');
+    assert.equal(await dialog.locator('#scenza-auth-form, .scenza-auth-methods').count(), 0, 'Login and registration never flash for a known account');
     const refreshed = page.waitForResponse('**/api/auth/config');
     release();
     await refreshed;
@@ -46,17 +46,17 @@ try {
     page.getByRole('button', { name: 'Спартак', exact: true }).filter({ visible: true }).first().click(),
   ]);
   await dialog.getByRole('button', { name: 'Выйти из аккаунта' }).click();
-  await dialog.getByRole('heading', { name: 'Вход в систему' }).waitFor();
+  await dialog.getByRole('heading', { name: 'С возвращением' }).waitFor();
   assert.equal(await page.locator('.scenza-account-button').count(), 0, 'Logout clears the shared account');
 
   pending = new Promise(resolve => { release = resolve; });
   await page.goto(`${base}/?account`);
   await dialog.waitFor();
-  assert.equal(await dialog.locator('#scenza-auth-form, .scenza-auth-tabs').count(), 0, 'Unknown session waits before showing guest forms');
+  assert.equal(await dialog.locator('#scenza-auth-form, .scenza-auth-methods').count(), 0, 'Unknown session waits before showing guest forms');
   assert.equal(await dialog.getByRole('status').count(), 1);
   sessionUser = null;
   release();
-  await dialog.getByRole('heading', { name: 'Вход в систему' }).waitFor();
+  await dialog.getByRole('heading', { name: 'С возвращением' }).waitFor();
   assert.equal(await dialog.locator('#scenza-auth-form').count(), 1, 'Confirmed guest can still sign in');
   assert.deepEqual(errors, []);
   console.log('PASS: known account never flashes auth forms at desktop/mobile widths; logout clears account; unknown session waits; confirmed guests can sign in; no page errors');

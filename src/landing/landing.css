@@ -6,7 +6,7 @@
 .scenza-landing p { color: var(--muted); }
 .scenza-landing h1, .scenza-landing h2, .scenza-landing h3 { color: #f4f7fa; }
 .scenza-container { width: min(1240px, calc(100% - 80px)); margin-inline: auto; }
-.scenza-landing section[id], .scenza-feature-strip { scroll-margin-top: 106px; }
+.scenza-landing section[id] { scroll-margin-top: 106px; }
 .scenza-header { height: 82px; position: sticky; top: 0; z-index: 40; border-bottom: 1px solid #163039; background: #061013f5; }
 .scenza-header-inner { height: 100%; display: flex; align-items: center; gap: 24px; }
 .scenza-brand { display: inline-flex; align-items: center; gap: 12px; flex-shrink: 0; }
@@ -30,7 +30,41 @@
 .scenza-button:focus-visible { outline-color: var(--accent); }
 .scenza-header-actions .scenza-button { min-height: 38px; padding: 9px 18px; font-size: .75rem; }
 .scenza-menu-button { display: none; margin-left: auto; width: 44px; height: 44px; align-items: center; justify-content: center; border: 1px solid #29424a; border-radius: 50%; }
-.scenza-mobile-nav { display: none; }
+.scenza-mobile-menu, .scenza-account-chevron { display: none; }
+/* Mobile menu: a floating card over the dimmed page — brand and close, large links with chevrons, account, main action, language. */
+@media (max-width: 1000px) {
+  .scenza-mobile-menu { display: block; position: fixed; inset: 0; z-index: 70; padding: max(12px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; background: #01080dcc; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); animation: scenza-menu-fade .2s ease-out; }
+  .scenza-mobile-nav { display: flex; flex-direction: column; max-width: 520px; margin: 0 auto; border: 1px solid #1f3a40; border-radius: 26px; background: linear-gradient(180deg, #0a1b20, #071418); box-shadow: 0 30px 80px #000a; animation: scenza-menu-drop .26s cubic-bezier(.22, 1, .36, 1); }
+  .scenza-mobile-nav-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 14px 8px 22px; }
+  .scenza-mobile-nav-head .logo-mark { width: 42px; height: 42px; }
+  .scenza-mobile-nav-head .logo-word { display: block; font-size: 1.6rem; }
+  .scenza-mobile-nav-head .logo-word small { font-size: .62rem; }
+  .scenza-mobile-nav-close { display: grid; place-items: center; flex-shrink: 0; width: 48px; height: 48px; border-radius: 50%; color: #eef6f7; transition: background-color .15s; }
+  .scenza-mobile-nav-close:hover { background: #ffffff10; }
+  .scenza-mobile-nav-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .scenza-mobile-nav ul { margin: 0; padding: 4px 22px 8px; list-style: none; }
+  .scenza-mobile-nav li + li { border-top: 1px solid #1a3137; }
+  .scenza-mobile-nav li a { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; padding: 6px 2px; color: #f1f7f8; font-size: 1.3rem; font-weight: 500; letter-spacing: -.01em; }
+  .scenza-mobile-nav li a svg { flex-shrink: 0; color: #8aa3aa; transition: color .15s, translate .15s; }
+  .scenza-mobile-nav li a:hover svg { color: var(--accent); translate: 2px 0; }
+  .scenza-mobile-nav-foot { display: grid; gap: 16px; padding: 18px 22px 20px; border-top: 1px solid #1a3137; }
+  .scenza-mobile-nav-foot > .scenza-button { width: 100%; min-height: 60px; border-radius: 18px; font-size: 1.12rem; }
+  .scenza-mobile-nav-foot > .scenza-mobile-nav-start { justify-content: space-between; padding-inline: 24px 20px; font-size: 1.28rem; }
+  .scenza-mobile-nav .scenza-language { justify-self: center; gap: 0; padding: 0; border: 0; }
+  .scenza-mobile-nav .scenza-language button { min-width: 44px; min-height: 44px; padding: 8px 4px; background: transparent; font-size: .92rem; }
+  .scenza-mobile-nav .scenza-language button + button::before { content: '/'; content: '/' / ''; margin-right: 12px; color: #4f676e; font-weight: 400; }
+  .scenza-mobile-nav-account { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
+  .scenza-mobile-nav-account .scenza-profile { order: -1; min-width: 0; }
+  .scenza-mobile-nav-account .scenza-account-button { max-width: 100%; min-height: 60px; gap: 16px; padding: 0 4px 0 0; border: 0; background: none; box-shadow: none; color: #f1f7f8; font-size: 1.2rem; font-weight: 500; }
+  .scenza-mobile-nav-account .scenza-account-button::before, .scenza-mobile-nav-account .scenza-account-button::after { display: none; }
+  .scenza-mobile-nav-account .scenza-account-button > svg:first-child { box-sizing: content-box; width: 22px; height: 22px; padding: 16px; border: 1px solid #2b4a50; border-radius: 50%; }
+  .scenza-mobile-nav-account .scenza-account-chevron { display: block; color: #a7bcc1; }
+  .scenza-mobile-nav-account .scz-notify-bell { width: 48px; height: 48px; }
+  .scenza-mobile-nav-account .scz-notify-bell svg { width: 26px; height: 26px; }
+}
+@keyframes scenza-menu-fade { from { opacity: 0; } }
+@keyframes scenza-menu-drop { from { opacity: 0; transform: translateY(-10px) scale(.98); } }
+@media (prefers-reduced-motion: reduce) { .scenza-mobile-menu, .scenza-mobile-nav { animation: none; } }
 .scenza-hero { position: relative; isolation: isolate; padding: 62px 0 0; overflow: hidden; }
 .scenza-hero::before { content: ''; position: absolute; inset: 0; z-index: -2; pointer-events: none; background: radial-gradient(ellipse at 73% 35%, #17403d77, transparent 57%), radial-gradient(ellipse at 74% 110%, #02090ccc, transparent 48%), linear-gradient(115deg, #061114, #081b1e 75%, #061316); }
 .scenza-hero-paths.scenza-background-paths { position: absolute; inset: 0; z-index: -1; pointer-events: none; opacity: .65; }
@@ -44,14 +78,13 @@
 .scenza-hero-buttons .scenza-button-primary { box-shadow: 0 6px 26px #23d6bd18; }
 .scenza-hero-product { --hero-rest: perspective(1400px) rotateY(-5deg) rotateZ(-1deg); --hero-start: perspective(1400px) rotateY(-365deg) rotateZ(-1deg); position: relative; min-width: 0; transform: var(--hero-rest); transform-origin: center; animation: scenza-hero-turn 1.8s cubic-bezier(.16, 1, .3, 1) .15s both; }
 .scenza-hero-product::before { content: ''; position: absolute; inset: 12% 5% 18%; z-index: -1; background: #0eb79f; filter: blur(90px); opacity: .08; pointer-events: none; }
-.scenza-hero .product-demo { border-color: #276c70; box-shadow: 0 17px 46px #00000055; }
 .scenza-hero-robot { position: relative; z-index: 1; min-width: 0; width: 100%; height: clamp(490px, 43vw, 640px); isolation: isolate; }
 .scenza-robot-spotlight { position: absolute; inset: 0; z-index: -1; background: radial-gradient(ellipse at 50% 48%, #35ead02b, #18ad9f0d 35%, transparent 65%); pointer-events: none; }
 .scenza-robot-scene, .scenza-robot-video { width: 100%; height: 100%; }
 .scenza-robot-scene { transform: scale(1.2312) translateZ(0); transform-origin: center; will-change: transform; backface-visibility: hidden; mask-image: linear-gradient(to bottom, #000 62%, transparent 90%); }
 .scenza-robot-video { display: block; object-fit: cover; filter: brightness(1.22) contrast(.97); pointer-events: none; mask-image: radial-gradient(ellipse 50% 52% at 50% 45%, #000 58%, transparent 100%); }
 /* Greeting that appears "in the robot's head": two small thought dots lead from the head to a bubble where the text types out. The bubble sits left of the head so it never covers the waving hand on the right. */
-.scenza-robot-thought { position: absolute; z-index: 2; right: calc(50% + 84px); top: 7%; display: flex; flex-direction: column-reverse; align-items: flex-end; pointer-events: none; }
+.scenza-robot-thought { position: absolute; z-index: 2; right: calc(50% + 86px); top: 9%; display: flex; flex-direction: column-reverse; align-items: flex-end; pointer-events: none; }
 p.scenza-robot-thought-bubble { position: relative; display: grid; margin: 0; max-width: min(250px, 42vw); padding: 12px 17px 13px; border: 1px solid #2f7c78; border-radius: 18px 18px 6px 18px; background: linear-gradient(160deg, #0f2f30f2, #08191ef2); box-shadow: 0 0 0 1px #45f0d60f inset, 0 10px 34px #00000066, 0 0 30px #45f0d61f; font-size: .96rem; font-weight: 700; line-height: 1.4; letter-spacing: -.005em; color: #f4f7fa; transform-origin: 100% 100%; opacity: 0; transform: translateY(6px) scale(.86); }
 .scenza-robot-thought-sizer, .scenza-robot-thought-text { grid-area: 1 / 1; white-space: pre-line; }
 .scenza-robot-thought-sizer { visibility: hidden; }
@@ -69,7 +102,7 @@ p.scenza-robot-thought-bubble { position: relative; display: grid; margin: 0; ma
   .scenza-robot-thought[data-visible=true] :is(.scenza-robot-thought-dot, .scenza-robot-thought-bubble) { animation: none; opacity: 1; transform: none; }
   .scenza-robot-thought-caret[data-typing=true] { animation: none; }
 }
-@media (max-width: 650px) { .scenza-robot-thought { right: calc(50% + 48px); top: 3%; } p.scenza-robot-thought-bubble { font-size: .84rem; padding: 9px 13px 10px; max-width: min(200px, 46vw); } }
+@media (max-width: 650px) { .scenza-robot-thought { right: calc(50% + 56px); top: 6%; } p.scenza-robot-thought-bubble { font-size: .84rem; padding: 9px 13px 10px; max-width: min(200px, 46vw); } }
 .scenza-spotlight-layer { position: fixed; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; }
 .scenza-cursor-spotlight { position: absolute; left: -160px; top: -160px; width: 320px; height: 320px; border-radius: 50%; opacity: 0; background: radial-gradient(circle, #b9ffed4d 0%, #64ebd52e 20%, #24bda80d 48%, transparent 72%); transition: opacity .18s ease-out; will-change: transform; }
 @media (max-width: 950px) { .scenza-hero-robot { height: 480px; max-width: 650px; margin-inline: auto; } .scenza-robot-spotlight { background-position: center; } }
@@ -101,14 +134,7 @@ p.scenza-robot-thought-bubble { position: relative; display: grid; margin: 0; ma
 .scenza-platforms span { display: flex; align-items: center; min-height: 36px; padding: 8px 10px; border: 1px solid #24414a; background: #09171e; border-radius: 4px; font-size: .64rem; color: #dcecee; white-space: nowrap; }
 .scenza-format-note { display: flex; align-items: center; gap: 10px; margin-top: 18px; color: #98b1b8; font-size: .65rem; }
 .scenza-format-note i { width: 3px; height: 3px; border-radius: 50%; background: #3a5c66; }
-.scenza-demo-section { border-top: 1px solid #173039; border-bottom: 1px solid #173039; padding-block: 45px 34px; background: #07151a99; }
-.scenza-demo-section .scenza-section-title h2 { font-size: clamp(1.6rem, 2.1vw, 2rem); }
-.scenza-demo-section .product-demo { border-color: #276066; box-shadow: 0 15px 42px #00000035; }
-.scenza-feature-strip { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 23px; padding-top: 29px; }
-.scenza-feature-strip > div { display: flex; gap: 13px; align-items: start; }
 .scenza-feature-icon { flex-shrink: 0; width: 42px; height: 42px; border: 1px solid #24675f; border-radius: 50%; background: #092624; display: grid; place-items: center; color: var(--accent); }
-.scenza-feature-strip h3 { font-size: .83rem; font-weight: 650; padding-top: 2px; }
-.scenza-feature-strip p { margin-top: 7px; font-size: .72rem; line-height: 1.6; }
 .scenza-pricing-section { padding-block: 54px 35px; }
 .scenza-pricing-placeholder { min-height: 520px; }
 .scenza-landing .scenza-demo-pricing { font-size: .78rem; margin-bottom: 14px; }
@@ -150,15 +176,12 @@ p.scenza-robot-thought-bubble { position: relative; display: grid; margin: 0; ma
 .scenza-footer p { font-size: .64rem; }
 .scenza-dialog { position: fixed; inset: 0; width: min(450px, calc(100% - 32px)); max-height: calc(100dvh - 32px); margin: auto; padding: 32px; overflow-y: auto; border: 1px solid #396269; border-radius: 12px; color: #eff7fa; background: #0b1b23; font: 400 14px/1.5 Manrope, 'Segoe UI', sans-serif; box-shadow: 0 25px 90px #0009; }
 .scenza-dialog::backdrop { background: #01080dd6; }
-.scenza-dialog-close { position: absolute; right: 12px; top: 12px; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 5px; color: #b6cdd2; }
-.scenza-dialog-close:hover { background: #203c43; color: white; }
+.scenza-dialog-close { position: absolute; right: 12px; top: 12px; display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%; color: #d5e4e8; transition: background-color .15s, color .15s; }
+.scenza-dialog-close:hover { background: #ffffff12; color: white; }
 .scenza-dialog h2 { font-size: 1.45rem; line-height: 1.25; letter-spacing: -.02em; margin: 14px 0 12px; }
 .scenza-auth-heading { padding-top: 10px; text-align: center; }
 .scenza-auth-mark { display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; background: #103931; border: 1px solid #25675b; border-radius: 9px; color: var(--accent); }
 .scenza-auth-heading p { font-size: .79rem; line-height: 1.6; color: #b0c9d0; }
-.scenza-auth-tabs { display: grid; grid-template-columns: 1fr 1fr; padding: 4px; margin-top: 23px; border: 1px solid #294751; background: #08161e; border-radius: 6px; }
-.scenza-auth-tabs button { padding: 10px 5px; min-height: 39px; font-size: .8rem; border-radius: 4px; color: #b0c4ce; }
-.scenza-auth-tabs button[aria-selected=true] { color: var(--accent); background: #17332f; }
 .scenza-plan-choice { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 7px; padding: 13px; margin-top: 18px; border: 1px solid #2a5e56; background: #0b2928; border-radius: 5px; font-size: .75rem; }
 .scenza-plan-choice > span { color: #afc7cc; }
 .scenza-plan-choice > strong { font-weight: 600; color: #effffa; }
@@ -173,7 +196,6 @@ p.scenza-robot-thought-bubble { position: relative; display: grid; margin: 0; ma
 .scenza-auth-status > svg { margin-top: 2px; }
 .scenza-auth-status p { color: #d3e4e0; font-size: .78rem; line-height: 1.6; }
 .scenza-auth-terms { text-align: center; font-size: .7rem; margin-top: 13px; color: #a2bcc6; }
-.scenza-demo-link { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 40px; margin-top: 9px; color: var(--accent); font-size: .79rem; }
 .scenza-video-dialog { width: min(880px, calc(100% - 32px)); padding: 25px; }
 .scenza-video-dialog h2 { padding-right: 24px; }
 .scenza-video-dialog video { display: block; width: 100%; max-height: 65dvh; object-fit: contain; background: #03090d; border-radius: 5px; margin-top: 17px; }
@@ -202,18 +224,11 @@ p.scenza-robot-thought-bubble { position: relative; display: grid; margin: 0; ma
   .scenza-platform-panel { padding: 16px 13px; }
   .scenza-platforms { grid-template-columns: 1fr; gap: 5px; padding-top: 13px; }
   .scenza-platforms span { min-height: 29px; padding: 5px 9px; }
-  .scenza-feature-strip { gap: 18px; }
 }
 @media (max-width: 1000px) {
   .scenza-desktop-nav { display: none; }
   .scenza-header-actions { margin-left: auto; }
   .scenza-menu-button { display: inline-flex; margin-left: 0; }
-  .scenza-mobile-nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 16px; position: absolute; left: 0; right: 0; padding: 8px 26px 16px; background: #061013; border-bottom: 1px solid #163039; }
-  .scenza-mobile-nav > a { display: flex; align-items: center; min-height: 44px; padding: 8px 0; font-size: .88rem; }
-  .scenza-mobile-nav > div { grid-column: 1 / -1; display: grid; grid-template-columns: auto repeat(2, minmax(0, 1fr)); align-items: center; gap: 8px; margin-top: 12px; }
-  .scenza-mobile-nav .scenza-language { padding: 0; border: 0; }
-  .scenza-mobile-nav > div > .scenza-button { min-width: 0; padding-inline: 12px; }
-  .scenza-mobile-nav .scenza-language button { min-width: 44px; min-height: 44px; background: transparent; }
   .scenza-hero { padding-top: 44px; }
   .scenza-hero-grid { grid-template-columns: minmax(0,1fr); gap: 39px; }
   .scenza-hero-copy { max-width: 600px; padding-bottom: 0; }
@@ -227,9 +242,6 @@ p.scenza-robot-thought-bubble { position: relative; display: grid; margin: 0; ma
   .scenza-platforms { grid-column: 2; grid-row: 1 / 3; grid-template-columns: 1fr 1fr; padding: 0; margin: 0; }
   .scenza-platforms span { font-size: .75rem; min-height: 41px; }
   .scenza-format-note { grid-column: 1 / -1; margin-top: 5px; }
-  .scenza-feature-strip { grid-template-columns: 1fr 1fr; gap: 25px 35px; }
-  .scenza-feature-strip h3 { font-size: .9rem; }
-  .scenza-feature-strip p { font-size: .8rem; }
   .scenza-footer > div { flex-wrap: wrap; }
   .scenza-footer nav { margin-left: auto; margin-right: 0; }
   .scenza-footer p { width: 100%; text-align: center; padding-top: 3px; }
@@ -244,7 +256,6 @@ p.scenza-robot-thought-bubble { position: relative; display: grid; margin: 0; ma
   .scenza-brand .logo-word small { font-size: .52rem; }
   .scenza-header-actions { display: none; }
   .scenza-menu-button { margin-left: auto; }
-  .scenza-mobile-nav { padding-inline: 18px; }
   .scenza-hero { padding-block: 24px 0; }
   .scenza-hero-title { font-size: clamp(2.25rem, 9.5vw, 3rem); line-height: 1.16; letter-spacing: -.032em; }
   .scenza-hero-copy > p { font-size: .9rem; line-height: 1.75; margin-top: 20px; }
@@ -265,12 +276,7 @@ p.scenza-robot-thought-bubble { position: relative; display: grid; margin: 0; ma
   .scenza-platform-panel > p { font-size: .82rem; }
   .scenza-platforms { display: grid; width: 100%; margin-top: 19px; }
   .scenza-format-note { margin-top: 18px; font-size: .75rem; }
-  .scenza-demo-section { padding-block: 34px 27px; }
-  .scenza-demo-section .scenza-section-title h2 { font-size: 1.55rem; }
-  .scenza-feature-strip { grid-template-columns: 1fr; gap: 23px; padding-top: 27px; }
   .scenza-feature-icon { width: 44px; height: 44px; }
-  .scenza-feature-strip h3 { font-size: .92rem; }
-  .scenza-feature-strip p { max-width: 280px; margin-top: 5px; font-size: .81rem; }
   .scenza-pricing-section { padding-block: 35px 21px; }
   .scenza-landing .scenza-period-switch button { padding-inline: 11px; font-size: .77rem; }
   .scenza-landing .scenza-plan-description { font-size: .87rem; }
@@ -308,14 +314,6 @@ p.scenza-robot-thought-bubble { position: relative; display: grid; margin: 0; ma
 .scenza-platform-telegram svg { color: #32a9e8; }
 .scenza-price-card:hover { border-color: #5b938b; }
 .scenza-landing .scenza-price-card-selected { border-color: var(--accent); }
-.scenza-auth-plans { border: 0; padding: 0; margin: 20px 0 0; min-width: 0; }
-.scenza-auth-plans legend { color: #d7e8e8; font-size: .8rem; margin-bottom: 9px; }
-.scenza-auth-plans > div { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
-.scenza-auth-plans > div > label { display: flex; align-items: start; gap: 6px; padding: 10px 8px; margin: 0; border: 1px solid #31505c; background: #09171e; border-radius: 6px; cursor: pointer; }
-.scenza-auth-plans > div > label:has(:checked) { border-color: var(--accent); background: #12342f; color: #eafffa; }
-.scenza-auth-plans > div > label:has(:focus-visible) { outline: 2px solid var(--accent); outline-offset: 3px; }
-.scenza-auth-plans input[type=radio] { width: 14px; height: 14px; min-height: 0; margin: 3px 0 0; padding: 0; flex-shrink: 0; accent-color: var(--accent); }
-.scenza-auth-plans small { display: block; margin-top: 4px; font-size: .64rem; line-height: 1.5; color: #b2c8cc; }
 .scenza-auth-period { display: grid; gap: 7px; margin-top: 13px; }
 .scenza-auth-period select { min-height: 44px; width: 100%; padding: 8px 10px; border: 1px solid #31505c; border-radius: 5px; color: #eefaf7; background: #09171e; font: inherit; }
 @keyframes scenza-hero-turn {

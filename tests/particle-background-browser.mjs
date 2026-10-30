@@ -63,7 +63,7 @@ try {
   });
   await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }));
   await page.locator('.scenza-hero-buttons button').click();
-  await page.getByRole('dialog', { name: 'Регистрация', exact: true }).waitFor();
+  await page.getByRole('dialog', { name: 'Создать аккаунт', exact: true }).waitFor();
   assert.deepEqual(errors, [], 'No uncaught browser errors');
   console.log('PASS particles: desktop/tablet/mobile, painted animated canvas, fixed background, reduced motion, registration');
 } finally {

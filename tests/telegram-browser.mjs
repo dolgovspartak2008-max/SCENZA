@@ -71,7 +71,8 @@ try {
   };
   const telegram = async () => {
     const popupPromise = page.waitForEvent('popup');
-    await page.getByRole('button', { name: 'Войти через Telegram', exact: true }).click();
+    await page.getByRole('dialog').getByRole('tab', { name: 'Telegram', exact: true }).click();
+    await page.getByRole('button', { name: 'Продолжить в Telegram', exact: true }).click();
     const popup = await popupPromise;
     await popup.waitForURL(/^https:\/\/t\.me\/SCENZA_BOT\?start=login_[A-Za-z0-9_-]{43}$/);
     const start = new URL(popup.url()).searchParams.get('start');
@@ -100,9 +101,15 @@ try {
     await page.getByRole('heading', { name: 'Ваш аккаунт SCENZA' }).waitFor();
     if (label === 'Мария Тестовая') await page.getByText(`Telegram ID: ${person.id}`, { exact: true }).waitFor();
   };
+  // Login and sign-up share one dialog; the footer link switches to sign-up only when it is not already open.
+  const toRegister = async () => {
+    const create = page.getByRole('dialog').getByRole('button', { name: 'Создать', exact: true });
+    if (await create.count()) await create.click();
+    await page.getByRole('heading', { name: 'Создать аккаунт', exact: true }).waitFor();
+  };
   const logout = async () => {
     await page.getByRole('button', { name: 'Выйти из аккаунта', exact: true }).click();
-    await page.getByRole('heading', { name: 'Вход в систему', exact: true }).waitFor();
+    await page.getByRole('heading', { name: 'С возвращением', exact: true }).waitFor();
     await page.locator('.scenza-header-actions').getByRole('button', { name: 'Войти', exact: true }).waitFor();
     assert.equal((await context.cookies(origin)).some(cookie => cookie.name === 'scena_session' && cookie.value), false);
   };
@@ -130,7 +137,8 @@ try {
   await mobile.goto(origin);
   await mobile.getByRole('button', { name: 'Открыть меню', exact: true }).click();
   await mobile.getByRole('button', { name: 'Войти', exact: true }).first().click();
-  await mobile.getByRole('button', { name: 'Войти через Telegram', exact: true }).click();
+  await mobile.getByRole('dialog').getByRole('tab', { name: 'Telegram', exact: true }).click();
+  await mobile.getByRole('button', { name: 'Продолжить в Telegram', exact: true }).click();
   const fallback = mobile.getByRole('link', { name: 'Открыть бота SCENZA', exact: true });
   await fallback.waitFor();
   assert.equal(mobilePopups.length, 0, 'Mobile Telegram login never opens an about:blank popup');
@@ -151,8 +159,7 @@ try {
 
   await page.goto(origin);
   await page.getByRole('button', { name: 'Войти', exact: true }).first().click();
-  await page.getByRole('tab', { name: 'Регистрация', exact: true }).click();
-  assert.equal(await page.getByRole('dialog').locator('input[type=checkbox]:checked').count(), 0);
+  await toRegister();
   await telegram();
   assert.equal(await backend.auth.bots.userByTelegram(person.id), null);
   await bots.handleClient(callback(action('webregister:')));
@@ -177,14 +184,15 @@ try {
   await logout();
   console.log('PASS: existing Telegram account confirms login and retains the original trial');
 
-  await page.getByRole('tab', { name: 'Регистрация', exact: true }).click();
+  await toRegister();
+  await page.getByRole('dialog').getByRole('tab', { name: 'Почта', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.locator('#scenza-name').fill('Public Browser');
   await dialog.locator('#scenza-email').fill('public-browser@example.com');
   await dialog.locator('#scenza-password').fill('browser-password-42');
   await dialog.getByRole('checkbox').nth(0).check();
   await dialog.getByRole('checkbox').nth(1).check();
-  await dialog.getByRole('button', { name: 'Создать аккаунт', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Продолжить', exact: true }).click();
   await page.locator('#scenza-code').waitFor();
   assert.equal(inbox.length, 1);
   await page.locator('#scenza-code').fill(inbox[0].code);
