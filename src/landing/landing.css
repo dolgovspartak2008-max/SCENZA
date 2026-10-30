@@ -50,16 +50,16 @@
 .scenza-robot-scene, .scenza-robot-video { width: 100%; height: 100%; }
 .scenza-robot-scene { transform: scale(1.2312) translateZ(0); transform-origin: center; will-change: transform; backface-visibility: hidden; mask-image: linear-gradient(to bottom, #000 62%, transparent 90%); }
 .scenza-robot-video { display: block; object-fit: cover; filter: brightness(1.22) contrast(.97); pointer-events: none; mask-image: radial-gradient(ellipse 50% 52% at 50% 45%, #000 58%, transparent 100%); }
-/* Greeting that appears "in the robot's head": two small thought dots lead from the head to a bubble where the text types out. */
-.scenza-robot-thought { position: absolute; z-index: 2; left: calc(50% + clamp(34px, 3.4vw, 52px)); top: 7%; display: flex; flex-direction: column-reverse; align-items: flex-start; pointer-events: none; }
-p.scenza-robot-thought-bubble { position: relative; display: grid; margin: 0; max-width: min(250px, 42vw); padding: 12px 17px 13px; border: 1px solid #2f7c78; border-radius: 18px 18px 18px 6px; background: linear-gradient(160deg, #0f2f30f2, #08191ef2); box-shadow: 0 0 0 1px #45f0d60f inset, 0 10px 34px #00000066, 0 0 30px #45f0d61f; font-size: .96rem; font-weight: 700; line-height: 1.4; letter-spacing: -.005em; color: #f4f7fa; transform-origin: 0% 100%; opacity: 0; transform: translateY(6px) scale(.86); }
+/* Greeting that appears "in the robot's head": two small thought dots lead from the head to a bubble where the text types out. The bubble sits left of the head so it never covers the waving hand on the right. */
+.scenza-robot-thought { position: absolute; z-index: 2; right: calc(50% + 84px); top: 7%; display: flex; flex-direction: column-reverse; align-items: flex-end; pointer-events: none; }
+p.scenza-robot-thought-bubble { position: relative; display: grid; margin: 0; max-width: min(250px, 42vw); padding: 12px 17px 13px; border: 1px solid #2f7c78; border-radius: 18px 18px 6px 18px; background: linear-gradient(160deg, #0f2f30f2, #08191ef2); box-shadow: 0 0 0 1px #45f0d60f inset, 0 10px 34px #00000066, 0 0 30px #45f0d61f; font-size: .96rem; font-weight: 700; line-height: 1.4; letter-spacing: -.005em; color: #f4f7fa; transform-origin: 100% 100%; opacity: 0; transform: translateY(6px) scale(.86); }
 .scenza-robot-thought-sizer, .scenza-robot-thought-text { grid-area: 1 / 1; white-space: pre-line; }
 .scenza-robot-thought-sizer { visibility: hidden; }
 .scenza-robot-thought-caret { display: inline-block; width: 2px; height: 1.05em; margin-left: 2px; vertical-align: -.16em; border-radius: 1px; background: var(--accent); opacity: 0; transition: opacity .3s; }
 .scenza-robot-thought-caret[data-typing=true] { opacity: 1; animation: scenza-caret-blink 1s steps(1) infinite; }
 .scenza-robot-thought-dot { display: block; border: 1px solid #2f7c78; border-radius: 50%; background: #0c2628; box-shadow: 0 0 14px #45f0d626; opacity: 0; transform: scale(.4); }
-.scenza-robot-thought-dot:nth-child(1) { width: 8px; height: 8px; margin: 3px 0 0 -14px; }
-.scenza-robot-thought-dot:nth-child(2) { width: 13px; height: 13px; margin: 3px 0 0 -4px; }
+.scenza-robot-thought-dot:nth-child(1) { width: 8px; height: 8px; margin: 3px -14px 0 0; }
+.scenza-robot-thought-dot:nth-child(2) { width: 13px; height: 13px; margin: 3px -4px 0 0; }
 .scenza-robot-thought[data-visible=true] .scenza-robot-thought-dot { animation: scenza-thought-pop .32s cubic-bezier(.34, 1.56, .64, 1) forwards; }
 .scenza-robot-thought[data-visible=true] .scenza-robot-thought-dot:nth-child(2) { animation-delay: .1s; }
 .scenza-robot-thought[data-visible=true] .scenza-robot-thought-bubble { animation: scenza-thought-pop .42s cubic-bezier(.34, 1.56, .64, 1) .2s forwards; }
@@ -69,7 +69,7 @@ p.scenza-robot-thought-bubble { position: relative; display: grid; margin: 0; ma
   .scenza-robot-thought[data-visible=true] :is(.scenza-robot-thought-dot, .scenza-robot-thought-bubble) { animation: none; opacity: 1; transform: none; }
   .scenza-robot-thought-caret[data-typing=true] { animation: none; }
 }
-@media (max-width: 650px) { .scenza-robot-thought { left: calc(50% + 24px); top: 3%; } p.scenza-robot-thought-bubble { font-size: .84rem; padding: 9px 13px 10px; max-width: min(200px, 46vw); } }
+@media (max-width: 650px) { .scenza-robot-thought { right: calc(50% + 48px); top: 3%; } p.scenza-robot-thought-bubble { font-size: .84rem; padding: 9px 13px 10px; max-width: min(200px, 46vw); } }
 .scenza-spotlight-layer { position: fixed; inset: 0; z-index: 3; overflow: hidden; pointer-events: none; }
 .scenza-cursor-spotlight { position: absolute; left: -160px; top: -160px; width: 320px; height: 320px; border-radius: 50%; opacity: 0; background: radial-gradient(circle, #b9ffed4d 0%, #64ebd52e 20%, #24bda80d 48%, transparent 72%); transition: opacity .18s ease-out; will-change: transform; }
 @media (max-width: 950px) { .scenza-hero-robot { height: 480px; max-width: 650px; margin-inline: auto; } .scenza-robot-spotlight { background-position: center; } }

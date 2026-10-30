@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
-// When the robot opens its palms in /videos/robot-hello.* (the wave), the greeting starts typing above its head.
-const SPEAK_AT = 6.95;
+// When the robot raises its hand in /videos/robot-hello.* (the wave), the greeting starts typing above its head.
+const SPEAK_AT = 1.0;
 const LETTER_MS = 55;
 const PAUSE_AFTER_PUNCTUATION_MS = 380;
 
