@@ -7,7 +7,7 @@ import { createStore } from './store.mjs';
 import { createStorage } from './storage.mjs';
 import { OpenRouterProvider, PRIMARY_VIDEO_MODEL, FAST_EDIT_MODEL, ANALYSIS_VERSION } from './openai.mjs';
 import { analyzeLongVideo } from './analysis.mjs';
-import { ff, run, inspect, normalizeSettings, normalizeAd, applyAdPatch, timelineDuration, adTotalDuration, render, fail } from './render.mjs';
+import { ff, run, inspect, checkMediaTools, normalizeSettings, normalizeAd, applyAdPatch, timelineDuration, adTotalDuration, render, fail } from './render.mjs';
 import { createTokens } from './tokens.mjs';
 import { exportSrt, packXml } from './project-export.mjs';
 import { writeZip } from './zip.mjs';
@@ -78,6 +78,7 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
         }
     };
     try {
+      await checkMediaTools();
       const completedVersion=[...(project.versions||[]),...(project.exports||[])].find(version=>version.jobId===job.id&&project.files[version.id]);
       const finishedPack=job.payload?.capcut&&Object.values(project.capcutPacks||{}).some(pack=>pack.jobId===job.id&&project.files[pack.fileId]);
       if(finishedPack){project.status=job.payload.previousStatus||'READY';project.error=null;await save();await store.finishJob(job.id,workerId,{result:{projectId:project.id}});return;}
@@ -279,5 +280,7 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   const worker=await createWorker();process.once('SIGINT',()=>worker.stop());process.once('SIGTERM',()=>worker.stop());
-  console.log('SCENZA: обработчик видео запущен.');await worker.start();
+  console.log('SCENZA: обработчик видео запущен.');
+  await checkMediaTools().then(()=>console.log('SCENZA: FFmpeg и FFprobe запускаются.'),error=>console.error(`SCENZA: ${error.message}`));
+  await worker.start();
 }

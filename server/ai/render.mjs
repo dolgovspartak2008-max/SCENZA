@@ -101,6 +101,16 @@ export function run(binary, args, { cwd, duration, onProgress, timeout = 3 * 360
   });
 }
 export const ff = (args, options = {}) => run(FFMPEG_PATH, ['-hide_banner', '-nostdin', '-y', '-progress', 'pipe:1', ...args], options);
+// Readiness: an npm package or an API key is not proof that video can be processed — both programs must actually start.
+// A successful check is cached; a failed one is repeated on the next job. The program path is chosen at startup, so restart the services after installing FFmpeg.
+let mediaToolsReady;
+export function checkMediaTools() {
+  mediaToolsReady ||= Promise.all([['FFmpeg', FFMPEG_PATH], ['FFprobe', FFPROBE_PATH]].map(([name, binary]) => run(binary, ['-version'], { timeout: 15000 }).catch(error => {
+    throw Object.assign(fail(`Обработка видео недоступна: на сервере не найдена или не запускается программа ${name} (${path.basename(String(binary)).replace(/\.exe$/i, '')}: ${error.code || 'START_FAILED'}).`, 503), { code: 'MEDIA_TOOL_MISSING', tool: name });
+  }))).then(() => true);
+  mediaToolsReady.catch(() => { mediaToolsReady = undefined; });
+  return mediaToolsReady;
+}
 export async function inspect(input) {
   const { stdout } = await run(FFPROBE_PATH, ['-v', 'error', '-protocol_whitelist', 'file,pipe', '-format_whitelist', 'mov,matroska,avi,mpeg,mpegts,flv,asf,ogg', '-show_streams', '-show_format', '-of', 'json', input], { timeout: 30000 });
   const data = JSON.parse(stdout), video = data.streams?.find(s => s.codec_type === 'video' && !s.disposition?.attached_pic);

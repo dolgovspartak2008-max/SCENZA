@@ -2,8 +2,8 @@
 // Each rule matches the safe error text the worker saves; add new rules here when a new failure appears.
 const rules = [
   { test: /\((ffmpeg|ffprobe): ENOENT\)/, what: 'На сервере нет программы FFmpeg/ffprobe — без неё видео нельзя прочитать и смонтировать.',
-    why: 'Пакет ffmpeg-static не скачал программу при pnpm install. Частая причина — pnpm старше 10.26: он не понимает разрешение allowBuilds в pnpm-workspace.yaml и пропускает скачивание. Также бывает, если node_modules скопирован с другой системы.',
-    fix: 'В папке проекта выполните node node_modules/ffmpeg-static/install.js — команда скачает FFmpeg, после чего повторите обработку. На будущее обновите pnpm: npm install -g pnpm@latest. Либо установите FFmpeg сами и укажите путь в .env: SCENZA_FFMPEG и SCENZA_FFPROBE.',
+    why: 'Пакет ffmpeg-static не скачал программу при pnpm install. Частая причина — pnpm пропустил скачивание: разрешение на сборку ffmpeg-static задаётся в pnpm-workspace.yaml (onlyBuiltDependencies), а pnpm старше 10.26 не понимает прежний ключ allowBuilds. Также бывает, если node_modules скопирован с другой системы.',
+    fix: 'В папке проекта выполните pnpm rebuild ffmpeg-static — команда скачает FFmpeg; затем перезапустите scenza и scenza-worker и повторите обработку. Либо установите FFmpeg сами и укажите путь в .env: SCENZA_FFMPEG и SCENZA_FFPROBE.',
     where: 'server/ai/render.mjs (FFMPEG_PATH, FFPROBE_PATH), папка node_modules/ffmpeg-static' },
   { test: /\(python: ENOENT\)|Не установлено Python-окружение/, what: 'Не найден Python для анализа видео (распознавание речи и поиск сцен).',
     why: 'Не создано окружение .scena/venv. Папки .scena нет в GitHub, поэтому в новой копии проекта его нет.',
