@@ -61,6 +61,12 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
     const put=async(id,file,mime,download=false,filename='')=>{if(leaseError)throw leaseError;await heartbeat();const key=`${project.id}/${id}${path.extname(file)}`;await storage.put(key,file);project.files[id]={key,mime,...(download?{download:true}:{}),...(filename?{filename}:{})};return id;};
     const get=async(id)=>{if(!project.files[id])throw fail('Исходный файл не найден.',404);const target=path.join(folder,`${id}${path.extname(project.files[id].key)}`);await storage.get(project.files[id].key,target);return target;};
     const onProgress=value=>{progress=value;};
+    // Each finished clip gets a cover from its own frames; the shared source poster made every card in the library look the same.
+    const clipPoster=async(id,file,seconds)=>{
+      const cover=path.join(folder,`${id}-poster.jpg`);
+      try{await processVideo(['-ss',String(Math.min(1.5,Math.max(0,seconds/3))),'-i',file,'-frames:v','1','-vf','scale=540:-2',cover]);await put(`${id}-poster`,cover,'image/jpeg');}
+      catch(error){if(leaseError||error.name==='AbortError')throw error;}
+    };
     const sourceIdentity=()=>fingerprint([project.sourceFingerprint,project.files.original?.key,project.upload?.size,project.duration]);
     const sourceUsage=async()=>{if(project.analyzedAt)await recordUsage({id:`source-${fingerprint([job.ownerId,project.id,sourceIdentity()])}`,kind:'source',sourceSeconds:project.duration,createdAt:project.analyzedAt}).catch(usageError);};
     const renderCandidates=async()=>{
@@ -78,6 +84,7 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
             const ad=project.ad?{...normalizeAd({...project.ad,start:insertAd?timelineDuration(settings)/2:(timelineDuration(settings)-adDuration)/2,duration:adDuration},timelineDuration(settings)),file:await get(project.ad.fileId)}:null;
             await render({input:original,output,settings,analysis:project.analysis,ad,preview:false,onProgress,signal:operation.signal});
             await put(candidate.id,output,'video/mp4',true);
+            await clipPoster(candidate.id,output,timelineDuration(settings));
             candidate.adFileId=project.ad?.fileId||null;candidate.ready=true;candidate.settings=settings;candidate.duration=adTotalDuration(ad,timelineDuration(settings));
             candidate.createdAt=new Date().toISOString();
           }
@@ -242,6 +249,7 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
         const music=settings.musicId?await get(settings.musicId):null;
         await render({input:original,output,settings,analysis:project.analysis,ad,music,preview:job.type!=='export',onProgress,signal:operation.signal});
         await put(versionId,output,'video/mp4',job.type==='export');
+        if(job.type==='export')await clipPoster(versionId,output,timelineDuration(settings));
         measured(job.type==='export'?'export':job.type==='revise'?'revise':'render',adTotalDuration(ad,timelineDuration(settings)));
         project.settings=settings;project.ad=projectAd;
         if(job.type==='export'){

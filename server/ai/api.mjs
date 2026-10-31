@@ -144,7 +144,8 @@ export async function createVideoApi({ dataDir, env = process.env }) {
         .filter(clip => project.files[clip.id]).map((clip, index) => ({
           id: `ai:${project.id}:${clip.id}`, projectId: project.id, projectUrl: `/ai/${project.id}`,
           title: clip.title || `${projectTitle(numbers.get(project.id) || 1)} · Клип ${index + 1}`, url: `/api/video/projects/${project.id}/files/${clip.id}`,
-          image: project.files.poster ? `/api/video/projects/${project.id}/files/poster` : '',
+          // Only the clip's own cover; without one the card shows the clip's first frame instead of the shared source poster.
+          image: project.files[`${clip.id}-poster`] ? `/api/video/projects/${project.id}/files/${clip.id}-poster` : '',
           duration: clip.duration ?? (project.settings ? timelineDuration(project.settings) : 0),
           format: clip.format ?? project.settings?.format ?? '9:16', createdAt: clip.createdAt ?? project.createdAt,
           telegramAvailable: !!storage.localPath(project.files[clip.id].key),

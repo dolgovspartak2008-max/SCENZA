@@ -36,7 +36,7 @@ test('AI exports join the clip library and publications while preserving account
     await store.saveProject(first.user.id, { id: 'ai-project', title: 'AI video', status: 'COMPLETED', createdAt: '2026-09-13T00:00:00Z', candidates: [], versions: [], exports: [{ id: 'export-1', format: '1:1', duration: 5 }], files: { 'export-1': { key: fileKey, mime: 'video/mp4', download: true }, 'preview-only': { key: fileKey, mime: 'video/mp4' } } });
     const clips = (await (await api('/api/clips', first.cookie)).json()).clips;
     assert.equal(clips.length, 1, 'completed AI export must appear in the main clip library');
-    const clip = clips[0]; assert.equal(clip.projectUrl, '/ai/ai-project'); assert.equal(clip.format, '1:1');
+    const clip = clips[0]; assert.equal(clip.projectUrl, '/ai/ai-project'); assert.equal(clip.format, '1:1'); assert.equal(clip.image, '', 'a clip never borrows the shared source poster');
     assert.equal(await (await api(clip.url, first.cookie)).text(), 'exported-video');
     assert.equal((await api(clip.url, second.cookie)).status, 404);
     assert.deepEqual((await (await api('/api/clips', second.cookie)).json()).clips, []);

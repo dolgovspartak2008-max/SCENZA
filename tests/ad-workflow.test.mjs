@@ -48,6 +48,7 @@ test('uploaded video ad survives decoding, AI edits, approval, preview and expor
   await complete((await request(`${route}/export`,'POST')).job);
   project=(await request(route)).project;
   const output=await inspect(path.join(dataDir,'ai/objects',project.files[project.finalFile].key));
+  assert.equal(project.files[`${project.finalFile}-poster`].mime,'image/jpeg','the exported clip has its own cover');
   assert.deepEqual([output.width,output.height],[1080,1080]); assert.equal(output.hasAudio,false);
   assert.ok(Math.abs(output.duration-4)<.2);
   const usage=await request('/api/video/usage');
