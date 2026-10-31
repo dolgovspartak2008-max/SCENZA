@@ -6,6 +6,9 @@ import ffmpeg from 'ffmpeg-static';
 import ffprobe from 'ffprobe-static';
 
 export const fail = (message, status = 400) => Object.assign(new Error(message), { status });
+// Source video limits, checked before upload, at project creation and again after ffprobe (before any token is spent).
+// The same values are shown next to the upload button; every plan has the same limits, plans differ only in tokens.
+export const SOURCE_LIMITS = { maxBytes: 20 * 1024 ** 3, maxSeconds: 20 * 60, maxSide: 8192, formats: ['mp4', 'mov', 'mkv', 'webm', 'm4v'], maxClipSeconds: 120, maxClips: 10 };
 // Bundled binaries can be missing (skipped postinstall, unsupported platform). Then an explicit env path or the system program is used.
 const usable = file => typeof file === 'string' && file !== '' && (!path.isAbsolute(file) || existsSync(file));
 export const resolveTool = (...candidates) => candidates.find(usable) || candidates.at(-1);
@@ -115,7 +118,8 @@ export async function inspect(input) {
   const { stdout } = await run(FFPROBE_PATH, ['-v', 'error', '-protocol_whitelist', 'file,pipe', '-format_whitelist', 'mov,matroska,avi,mpeg,mpegts,flv,asf,ogg', '-show_streams', '-show_format', '-of', 'json', input], { timeout: 30000 });
   const data = JSON.parse(stdout), video = data.streams?.find(s => s.codec_type === 'video' && !s.disposition?.attached_pic);
   const duration = Number(data.format?.duration || video?.duration);
-  if (!video || !Number.isFinite(duration) || duration <= 0 || duration > 43200 || video.width > 8192 || video.height > 8192) throw fail('Нужен видеофайл до 12 часов с разрешением до 8192 пикселей.');
+  if (!video || !Number.isFinite(duration) || duration <= 0 || duration > 43200) throw fail('Нужен видеофайл до 12 часов с читаемой видеодорожкой.');
+  if (video.width > SOURCE_LIMITS.maxSide || video.height > SOURCE_LIMITS.maxSide) throw fail(`Разрешение ${video.width}×${video.height} больше допустимого: до ${SOURCE_LIMITS.maxSide} пикселей по стороне.`);
   return { duration, width: video.width, height: video.height, codec: video.codec_name, fps: video.avg_frame_rate, hasAudio: data.streams.some(s => s.codec_type === 'audio') };
 }
 const stamp = time => {
@@ -123,8 +127,13 @@ const stamp = time => {
   return `${Math.floor(centiseconds / 360000)}:${String(Math.floor(centiseconds / 6000) % 60).padStart(2, '0')}:${String(Math.floor(centiseconds / 100) % 60).padStart(2, '0')}.${String(centiseconds % 100).padStart(2, '0')}`;
 };
 const escapeAss = text => String(text).replaceAll('\\', '＼').replaceAll('{', '｛').replaceAll('}', '｝').replace(/\r?\n/g, '\\N').replace(/[\u0000-\u001f]/g, '');
+// A cue ends after a finished sentence, after a clause once the line is half full, or at a real pause,
+// so a caption does not mix the end of one thought with the start of the next.
+const sentenceEnd = /[.!?…]["»”)]*$/u, clauseEnd = /[,;:—–]["»”)]*$/u;
+const sameWord = (a, b) => a.toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu, '') === b.toLocaleLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
 function subtitleCues(segments, settings, maxChars) {
   const cues = [];
+  let last = null;
   for (const segment of segments) {
     const start = Math.max(segment.start, settings.start), end = Math.min(segment.end, settings.end);
     if (end <= start) continue;
@@ -134,7 +143,9 @@ function subtitleCues(segments, settings, maxChars) {
       if (text) cues.push({ start, end, text });
       continue;
     }
-    const words = segment.words.filter(word => word.end > start && word.start < end && word.word.trim()).map(word => ({ ...word, word: word.word.trim() }));
+    // Speech recognition sometimes repeats a word at the border of two segments with overlapping time; it is shown once.
+    const words = segment.words.filter(word => word.end > start && word.start < end && word.word.trim()).map(word => ({ ...word, word: word.word.trim() }))
+      .filter(word => { const repeated = last && sameWord(last.word, word.word) && word.start < last.end - .05; if (!repeated) last = word; return !repeated; });
     let group = [], cueStart = start, characters = 0;
     const flush = () => {
       if (!group.length) return;
@@ -146,7 +157,9 @@ function subtitleCues(segments, settings, maxChars) {
       group = []; characters = 0;
     };
     for (const word of words) {
-      if (group.length && (group.length === 6 || characters + 1 + word.word.length > maxChars || Math.min(end, word.end) - cueStart > 3)) {
+      const previous = group.at(-1);
+      if (previous && (group.length === 6 || characters + 1 + word.word.length > maxChars || Math.min(end, word.end) - cueStart > 3 || word.start - previous.end > 1.2
+        || sentenceEnd.test(previous.word) || clauseEnd.test(previous.word) && characters >= maxChars * .4)) {
         flush(); cueStart = Math.max(start, word.start);
       }
       if (!group.length && Math.min(end, word.end) - cueStart > 3) cueStart = Math.max(start, word.start);
@@ -154,7 +167,14 @@ function subtitleCues(segments, settings, maxChars) {
     }
     flush();
   }
-  return cues;
+  // Two captions are never on screen together, and gaps shorter than a blink are closed so the text does not flicker.
+  cues.sort((a, b) => a.start - b.start);
+  for (let i = 1; i < cues.length; i++) {
+    const previous = cues[i - 1], cue = cues[i];
+    if (cue.start < previous.end) { if (cue.end - previous.end >= .2) cue.start = previous.end; else previous.end = Math.max(previous.start + .01, cue.start); }
+    else if (cue.start - previous.end < .25) previous.end = cue.start;
+  }
+  return cues.filter(cue => cue.end > cue.start);
 }
 const assColor = value => `&H00${value.slice(5,7)}${value.slice(3,5)}${value.slice(1,3)}`.toUpperCase();
 export function subtitlePreset(style) {
@@ -233,6 +253,10 @@ export function buildSubtitles(segments, settings, width, height) {
         return `{\\k${Math.max(1, offset(until) - offset(word.start))}}${emphasize(word.word.trim(), word.accent)}`;
       }).join(' ');
     }
+    // libass never breaks inside a word: a very long word at a large size is scaled down to stay inside the side margins.
+    const longest = Math.max(...values.map(value => value.trim().length));
+    const fitted = Math.floor(fontSize * width * .82 / Math.max(1, longest * fontSize * .68));
+    if (fitted < fontSize) text = `{\\fs${Math.max(12, fitted)}}${text}`;
     result += `Dialogue: 0,${stamp(start - settings.start)},${stamp(end - settings.start)},Default,,0,0,0,,${text}\n`;
   }
   return result;

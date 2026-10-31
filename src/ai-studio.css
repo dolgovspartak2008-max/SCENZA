@@ -165,7 +165,40 @@
 .ai-subtitles-preview{position:sticky;top:12px;display:grid;gap:8px}
 .ai-subtitle-stage{position:relative;width:100%;overflow:hidden;border:1px solid #365061;border-radius:10px;background:linear-gradient(160deg,#21414b,#0a1a20 60%,#13242b)}
 .ai-subtitle-stage img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;filter:brightness(.8)}
-.ai-subtitle-stage p{position:absolute;left:9%;right:9%;margin:0;text-align:center;line-height:1.15;paint-order:stroke fill;overflow-wrap:anywhere;text-shadow:0 2px 6px #00000080}
+.ai-subtitle-stage p{position:absolute;left:9%;right:9%;margin:0;text-align:center;line-height:1.15;paint-order:stroke fill;overflow-wrap:normal}
 .ai-subtitle-guide{position:absolute;left:0;right:0;height:20%;border-top:1px dashed #ffffff55;background:linear-gradient(to bottom,#ffffff0a,transparent);pointer-events:none}
 @media (max-width:860px){.ai-subtitles-layout{grid-template-columns:minmax(0,1fr)}.ai-subtitles-preview{position:static;max-width:300px;width:100%;justify-self:center;order:-1}}
 @media (max-width:520px){.ai-subtitles{padding:16px}.ai-subtitle-fonts{grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+/* Upload: limits next to the button, chosen template, and the estimate before processing starts. */
+.ai-limits{width:100%;display:grid;gap:6px;text-align:left;font-size:12px;color:#a4c5d2}
+.ai-limits ul{display:flex;flex-wrap:wrap;gap:4px 12px;margin:0;padding:0;list-style:none}
+.ai-limits li{line-height:1.45}.ai-limits b{color:#e2f2f5;font-weight:650}
+.ai-limits details ul{display:grid;gap:4px;margin-top:6px}.ai-limits details li::before{content:'· ';color:var(--accent)}
+.ai-limits summary{min-height:32px;align-content:center;cursor:pointer;color:#74ddd4}
+.ai-template-picker{display:grid;gap:4px;width:100%;text-align:left;font-size:12px;color:#a4c5d2}.ai-template-picker select{min-height:40px}
+.ai-estimate b{color:#e9fff7}
+/* Processing dock: real stage, measured progress only, time from real data. */
+.ai-progress-meta small{display:block;margin-top:3px;font-size:11px;color:#7fa3b0}
+/* Editor: one tab per group of tools, one apply bar, the flow from upload to export. */
+.ai-flow{display:flex;flex-wrap:wrap;gap:6px 18px;margin:12px 0 16px;padding:0;list-style:none;counter-reset:flow;font-size:12px;color:#7f9ca8}
+.ai-flow li{display:flex;align-items:center;gap:6px;counter-increment:flow}
+.ai-flow li::before{content:counter(flow);display:grid;place-items:center;width:20px;height:20px;border:1px solid #2b4b56;border-radius:50%;font-size:11px}
+.ai-flow .is-done{color:#74ddd4}.ai-flow .is-done::before{content:'✓';border-color:#2d7f78;color:#74ddd4}
+.ai-flow .is-current{color:#fff;font-weight:650}.ai-flow .is-current::before{background:var(--accent);border-color:var(--accent);color:#021c22}
+.ai-tool-tabs{display:flex;gap:6px;margin-top:20px;padding-bottom:2px;overflow-x:auto;scrollbar-width:thin;-webkit-overflow-scrolling:touch}
+.ai-tool-tabs button{flex:none;min-height:42px;padding:8px 16px;border:1px solid #2b4652;border-radius:999px;background:#0c1820;color:#cfe2e8;font:inherit;font-size:14px;cursor:pointer;white-space:nowrap}
+.ai-tool-tabs button:hover{border-color:#40dccc}
+.ai-tool-tabs button.is-active{background:#40dccc;border-color:#40dccc;color:#021c22;font-weight:700}
+.ai-tool-tabs button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.ai-tool-panel{display:grid;gap:14px;min-width:0;margin-top:14px;padding:18px;border:1px solid #1f3742;border-radius:12px;background:#08151b}
+.ai-tool-panel>.ai-subtitles{padding:0;border:0;background:none}
+.ai-tool-panel .ai-revision,.ai-tool-panel .ai-banner{margin:0}
+.ai-apply-bar{display:grid;gap:10px;margin-top:16px;padding-top:16px;border-top:1px solid #233743}.ai-apply-bar .ai-note{margin:0}
+.ai-templates{display:grid;gap:12px}.ai-templates h3{margin:0;font-size:16px}.ai-templates .ai-note{margin:0}
+.ai-template-save{display:flex;flex-wrap:wrap;align-items:end;gap:10px}.ai-template-save label{flex:1 1 240px;display:grid;gap:6px}
+.ai-template-list{display:grid;gap:10px;margin:0;padding:0;list-style:none}
+.ai-template-list li{display:grid;gap:10px;padding:12px 14px;border:1px solid #233743;border-radius:10px;background:#0b1a21}
+.ai-template-list li>div:first-child{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.ai-template-list small{flex-basis:100%;color:#88a6b2}
+.ai-template-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+@media(max-width:600px){.ai-tool-panel{padding:14px}.ai-tool-tabs{margin-inline:-4px;padding-inline:4px}.ai-apply-bar .ai-actions>.button,.ai-template-actions>.button{width:100%}}

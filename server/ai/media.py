@@ -103,6 +103,22 @@ def track_faces(input_path, metadata, start=0.0, end=None, scenes=()):
     return result
 
 
+# Phrases Whisper is known to invent over music or silence (credits of the subtitle datasets it was trained on).
+HALLUCINATIONS = ("субтитры сделал", "субтитры создавал", "редактор субтитров", "корректор а.", "dimatorzok",
+                  "продолжение следует", "спасибо за просмотр", "подписывайтесь на канал", "thanks for watching", "subtitles by")
+
+
+def likely_hallucination(segment, text, previous):
+    lowered = text.lower()
+    quiet = getattr(segment, "no_speech_prob", 0) > 0.5 and getattr(segment, "avg_logprob", 0) < -0.8
+    if quiet:
+        return True
+    if any(phrase in lowered for phrase in HALLUCINATIONS) and getattr(segment, "no_speech_prob", 0) > 0.1:
+        return True
+    # The same sentence repeated back to back is a decoding loop, not speech.
+    return len(text) > 12 and text == previous
+
+
 def transcribe(input_path):
     cache = Path(__file__).resolve().parents[2] / ".scena"
     os.environ.setdefault("HF_HOME", str(cache / "huggingface"))
@@ -120,11 +136,17 @@ def transcribe(input_path):
     except Exception as exc:
         raise MediaError("WHISPER_MODEL_UNAVAILABLE", "Не удалось загрузить модель Whisper. Проверьте соединение при первом запуске, свободное место и настройки модели.") from exc
     try:
-        segments, info = model.transcribe(str(input_path), word_timestamps=True, vad_filter=True, beam_size=5)
-        result = [{"start": round(segment.start, 6), "end": round(segment.end, 6), "text": segment.text.strip(),
-                   "words": [{"start": round(word.start, 6), "end": round(word.end, 6), "word": word.word}
-                             for word in segment.words or []]}
-                  for segment in segments]
+        # Not conditioning on the previous text stops Whisper's repetition loops; VAD keeps silence out of the captions.
+        segments, info = model.transcribe(str(input_path), word_timestamps=True, vad_filter=True, beam_size=5,
+                                          condition_on_previous_text=False, vad_parameters={"min_silence_duration_ms": 500})
+        result = []
+        for segment in segments:
+            text = segment.text.strip()
+            if not text or likely_hallucination(segment, text, result[-1]["text"] if result else ""):
+                continue
+            result.append({"start": round(segment.start, 6), "end": round(segment.end, 6), "text": text,
+                           "words": [{"start": round(word.start, 6), "end": round(word.end, 6), "word": word.word}
+                                     for word in segment.words or []]})
         return {"language": info.language, "segments": result}
     except Exception as exc:
         raise MediaError("TRANSCRIPTION_FAILED", "Не удалось распознать речь. Проверьте звуковую дорожку и настройки Whisper.") from exc

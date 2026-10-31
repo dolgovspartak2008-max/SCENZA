@@ -80,7 +80,7 @@ export function AuthModal({ open, mode, setMode, close, copy, restoreFocus, acco
     if (popup) popup.opener = null;
     setBusy(true); setError(''); setTelegramChallenge(null);
     try {
-      const challenge = await authRequest<{ url: string; expiresAt: number }>('telegram/bot/start', { mode, remember, termsAccepted, dataConsent });
+      const challenge = await authRequest<{ url: string; expiresAt: number }>('telegram/bot/start', { mode, remember, termsAccepted, dataConsent, ...(mode === 'register' ? { ref: savedReferral() } : {}) });
       if (current !== generation.current) { popup?.close(); return; }
       setTelegramChallenge(challenge);
       if (mobile) {

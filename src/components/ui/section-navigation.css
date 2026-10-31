@@ -11,14 +11,11 @@
 .scenza-section-rail { position: absolute; left: 26px; top: 26px; bottom: 26px; width: 1px; background: #29424a80; pointer-events: none; }
 .scenza-section-fill { position: absolute; inset: 0; background: linear-gradient(#45f0d633, #45f0d6aa); transform-origin: top; }
 .scenza-section-signal { position: absolute; top: -15px; left: -1px; width: 3px; height: 30px; border-radius: 3px; background: var(--accent); box-shadow: 0 0 10px #45f0d64d; }
-.scenza-section-indicator { display: none; position: fixed; right: max(16px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom)); z-index: 35; align-items: center; gap: 8px; padding: 9px 12px; border: 1px solid #27434b; border-radius: 5px; background: #081820f0; color: #93aeb6; font-size: 11px; font-weight: 600; font-variant-numeric: tabular-nums; pointer-events: none; }
-.scenza-section-indicator > span:first-child { color: var(--accent); }
 @media (min-width: 1200px) {
   .scenza-landing > main > .scenza-container, .scenza-landing > main > section > .scenza-container { width: min(1240px, calc(100% - 208px)); }
 }
 @media (max-width: 1199px), (hover: none), (pointer: coarse) {
   .scenza-section-nav { display: none; }
-  .scenza-section-indicator { display: flex; }
 }
 @media (prefers-reduced-motion: reduce) {
   .scenza-section-number { transition: color 150ms, background-color 150ms, opacity 150ms; }

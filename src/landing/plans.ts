@@ -31,3 +31,15 @@ export function parseSelection(value: string | null): PlanSelection | null {
     return demoPlans.some(plan => plan.id === parsed.planId) ? { planId: parsed.planId as PlanId, period: 'month' } : null;
   } catch { return null; }
 }
+// The one message about paid access: used by the pricing section, the profile and the studio, so all say the same thing.
+export const adminContactUrl = 'https://t.me/SCENZA_BOT';
+export function adminAccessCopy(language: Language, plan?: { name: string; tokens?: number }) {
+  const ru = language === 'ru';
+  return {
+    title: plan ? (ru ? `Тариф «${plan.name}»` : `${plan.name} plan`) : ru ? 'Пополнение токенов' : 'Top up tokens',
+    text: plan
+      ? ru ? `Онлайн-оплата пока не подключена. Напишите нам в Telegram: администратор подключит тариф (${plan.tokens} токенов) после оплаты. Без подтверждения администратора тариф не активируется.` : `Online payment is not connected yet. Message us on Telegram and the administrator will activate the plan (${plan.tokens} tokens) after payment. A plan is never activated without the administrator.`
+      : ru ? 'Онлайн-оплата пока не подключена. Напишите нам в Telegram: администратор пополнит токены после оплаты. Без подтверждения администратора токены не начисляются.' : 'Online payment is not connected yet. Message us on Telegram and the administrator will add tokens after payment. Tokens are never added without the administrator.',
+    action: ru ? 'Написать в Telegram' : 'Message us on Telegram',
+  };
+}

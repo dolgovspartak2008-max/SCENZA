@@ -6,6 +6,7 @@ import type { Account } from './landing/auth';
 import { NotificationList, useNotifications } from './Notifications';
 import type { NotificationItem } from './Notifications';
 import type { Navigate, Notify } from './model';
+import AdminAccess from './AdminAccess';
 import './profile.css';
 
 type TokenEntry = { id: string; tokens: number; reason: string; note: string; createdAt: string };
@@ -27,6 +28,7 @@ export default function Profile({ tab, navigate, notify }: { tab: ProfileTab; na
   const [promo, setPromo] = useState('');
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [topUp, setTopUp] = useState(false);
   const notifications = useNotifications();
   // The server answers 404 when there is no photo; the image error then falls back to the initial.
   const [avatar, setAvatar] = useState<string | null>('/api/account/avatar');
@@ -83,6 +85,7 @@ export default function Profile({ tab, navigate, notify }: { tab: ProfileTab; na
   const invited = referrals?.invited.length ?? 0;
   return <div className="profile-page">
     <div className="page-intro"><h1>Профиль</h1><p>Аккаунт, токены, приглашения друзей и уведомления</p></div>
+    <AdminAccess open={topUp} onClose={() => setTopUp(false)} />
     {error && <div className="connection-error" role="alert"><span>{error}</span><button className="button outline" onClick={() => void load()}>Повторить</button></div>}
     <div className="profile-tabs" role="tablist" aria-label="Разделы профиля">{tabs.map(([value, label]) => <button key={value} type="button" role="tab" aria-selected={tab === value} className={tab === value ? 'is-active' : ''} onClick={() => navigate(value === 'overview' ? '/profile' : `/profile?tab=${value}`)}>{label}{value === 'notifications' && !!notifications.feed?.unread && <span className="profile-tab-badge">{notifications.feed.unread}</span>}</button>)}</div>
 
@@ -95,7 +98,7 @@ export default function Profile({ tab, navigate, notify }: { tab: ProfileTab; na
       </section>
       <section className="panel profile-card profile-balance"><h2><Coins size={18} aria-hidden="true" />Баланс</h2><strong>{usage?.tokens ?? '—'}<small>{usage?.tokens !== undefined ? ` ${word(usage.tokens, 'токен', 'токена', 'токенов')}` : ''}</small></strong><p className="profile-muted">1 токен = 1 минута исходного видео. Токены не сгорают; превью, правки баннера и субтитров вручную — бесплатно.</p>
         <div className="profile-stats"><div><span>Видео за месяц</span><b>{usage ? `${Math.round(usage.sourceMinutes)} мин` : '—'}</b></div><div><span>Загрузок</span><b>{usage?.sourceCount ?? '—'}</b></div><div><span>AI-правок</span><b>{usage?.editRequests ?? '—'}</b></div></div>
-        <a className="button primary" href="/#pricing">Пополнить токены</a>
+        <button type="button" className="button primary" onClick={() => setTopUp(true)}>Пополнить токены</button>
       </section>
       <section className="panel profile-card"><h2>История токенов</h2>{usage?.tokenHistory?.length ? <ul className="profile-history">{usage.tokenHistory.slice(0, 15).map(entry => <li key={entry.id}><span>{reasons[entry.reason] ?? entry.reason}<small>{day(entry.createdAt)}{entry.note && entry.reason !== 'bonus' ? ` · ${entry.note}` : ''}</small></span><b data-positive={entry.tokens > 0}>{entry.tokens > 0 ? '+' : ''}{entry.tokens}</b></li>)}</ul> : <p className="profile-muted">Пока нет операций.</p>}</section>
       <section className="panel profile-card"><h2>Промокод</h2><form className="profile-row" onSubmit={event => { event.preventDefault(); void redeem(); }}><input value={promo} maxLength={32} placeholder="PROMO2026" aria-label="Промокод" onChange={event => setPromo(event.target.value)} /><button className="button outline" disabled={busy || !promo.trim()}>Применить</button></form>

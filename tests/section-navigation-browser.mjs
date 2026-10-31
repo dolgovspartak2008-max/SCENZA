@@ -89,7 +89,7 @@ try {
     await page.setViewportSize({ width, height: 900 });
     await page.waitForTimeout(200);
     assert.equal(await page.locator('.scenza-section-nav').isVisible(), false);
-    assert.ok(await page.locator('.scenza-section-indicator').isVisible());
+    assert.equal(await page.locator('.scenza-section-indicator').count(), 0, 'section counter is removed');
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), `${width}: no overflow`);
   }
   await page.mouse.wheel(0, 150);

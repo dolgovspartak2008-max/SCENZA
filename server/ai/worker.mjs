@@ -7,7 +7,7 @@ import { createStore } from './store.mjs';
 import { createStorage } from './storage.mjs';
 import { OpenRouterProvider, PRIMARY_VIDEO_MODEL, FAST_EDIT_MODEL, ANALYSIS_VERSION } from './openai.mjs';
 import { analyzeLongVideo } from './analysis.mjs';
-import { ff, run, inspect, checkMediaTools, normalizeSettings, normalizeAd, applyAdPatch, timelineDuration, adTotalDuration, render, fail } from './render.mjs';
+import { ff, run, inspect, checkMediaTools, normalizeSettings, normalizeAd, applyAdPatch, timelineDuration, adTotalDuration, render, fail, SOURCE_LIMITS } from './render.mjs';
 import { createTokens } from './tokens.mjs';
 import { exportSrt, packXml } from './project-export.mjs';
 import { writeZip } from './zip.mjs';
@@ -54,7 +54,10 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
     const heartbeat=()=>store.heartbeat(job.id,workerId,{stage:currentStage,progress});
     const timer=setInterval(()=>void heartbeat().catch(error=>{leaseError=error;operation.abort();}),10000);
     const save=async()=>{if(leaseError)throw leaseError;await heartbeat();await store.saveProject(job.ownerId,project);};
-    const stage=async(status,label)=>{project.status=status;currentStage=label;progress=null;await save();};
+    // `phase` names a measured step: its start is shown to the client, its duration feeds future time estimates.
+    const phaseStarted={};
+    const stage=async(status,label,phase)=>{project.status=status;currentStage=label;progress=null;if(phase){project.phase=phase;project.phaseStartedAt=new Date().toISOString();phaseStarted[phase]=Date.now();}await save();};
+    const measured=(phase,units)=>{if(!phaseStarted[phase]||!(units>0))return;project.timings={...(project.timings||{}),[phase]:{seconds:Math.round((Date.now()-phaseStarted[phase])/100)/10,units:Math.round(units*10)/10,at:new Date().toISOString()}};};
     const put=async(id,file,mime,download=false,filename='')=>{if(leaseError)throw leaseError;await heartbeat();const key=`${project.id}/${id}${path.extname(file)}`;await storage.put(key,file);project.files[id]={key,mime,...(download?{download:true}:{}),...(filename?{filename}:{})};return id;};
     const get=async(id)=>{if(!project.files[id])throw fail('Исходный файл не найден.',404);const target=path.join(folder,`${id}${path.extname(project.files[id].key)}`);await storage.get(project.files[id].key,target);return target;};
     const onProgress=value=>{progress=value;};
@@ -66,7 +69,11 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
           const candidate=project.candidates[i];
           if(!candidate.ready || !project.files[candidate.id] || candidate.adFileId !== (project.ad?.fileId||null)) {
             const output=path.join(folder,`${candidate.id}.mp4`);
-            const settings=normalizeSettings({start:candidate.start,end:candidate.end,...(candidate.segments?{segments:candidate.segments}:{}),keywords:candidate.keywords||[],subtitleStyle:'Dynamic'},project.duration);
+            // The template chosen before upload styles the first clips; its look never replaces the clip's own fragments or keywords.
+            const clip={start:candidate.start,end:candidate.end,...(candidate.segments?{segments:candidate.segments}:{}),keywords:candidate.keywords||[]};
+            let settings;
+            try{settings=normalizeSettings({subtitleStyle:'Dynamic',...(project.template?.settings||{}),...clip},project.duration);}
+            catch{settings=normalizeSettings({subtitleStyle:'Dynamic',...clip},project.duration);}
             const insertAd=project.ad?.position==='insert',adDuration=insertAd?project.ad.duration:Math.min(project.ad?.duration||5,timelineDuration(settings));
             const ad=project.ad?{...normalizeAd({...project.ad,start:insertAd?timelineDuration(settings)/2:(timelineDuration(settings)-adDuration)/2,duration:adDuration},timelineDuration(settings)),file:await get(project.ad.fileId)}:null;
             await render({input:original,output,settings,analysis:project.analysis,ad,preview:false,onProgress,signal:operation.signal});
@@ -87,7 +94,7 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
         project.error=null;await save();await store.finishJob(job.id,workerId,{result:{projectId:project.id}});return;
       }
       if(job.type==='preprocess') {
-        await stage('PREPROCESSING','Подготовка видео');
+        await stage('PREPROCESSING','Подготовка видео','preprocess');
         const input=path.join(root,'uploads',`${project.id}.original`);
         if (project.sourceUrl && !project.files.original) {
           await fs.rm(input,{force:true});
@@ -95,6 +102,7 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
           project.upload.size=(await fs.stat(input)).size;project.upload.bytes=project.upload.size;
         } else if (project.files.original) await storage.get(project.files.original.key,input);
         const metadata=await inspect(input);
+        if(metadata.duration>SOURCE_LIMITS.maxSeconds)throw fail(`Видео длиннее ${SOURCE_LIMITS.maxSeconds/60} минут (${Math.ceil(metadata.duration/60)} мин.). Обрежьте его или загрузите более короткий фрагмент — токены не списаны.`,400);
         Object.assign(project,metadata);
         const sourceHash=createHash('sha256');for await(const chunk of createReadStream(input))sourceHash.update(chunk);
         const previousFingerprint=project.sourceFingerprint;project.sourceFingerprint=sourceHash.digest('hex');
@@ -106,6 +114,7 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
           await put('proxy',proxy,'video/mp4');
         }
         const poster=path.join(folder,'poster.jpg'); await processVideo(['-ss',String(Math.min(2,project.duration/3)),'-i',input,'-frames:v','1','-vf','scale=640:-2',poster]); await put('poster',poster,'image/jpeg');
+        measured('preprocess',project.duration);
         project.status='READY'; await save();
         // The original is durable in object storage; only the upload copy is temporary.
         await fs.rm(input,{force:true});
@@ -122,15 +131,15 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
         if(!project.analysisResult&&project.candidates.length)project.analysisResult={candidates:project.candidates,model:project.analysisModel};
         if(!project.analysisResult && !ai.configured && !provider)throw fail('AI-анализ пока не подключён. Администратору нужно настроить ключ сервиса.',503);
         if(!project.analysis) {
-          await stage('TRANSCRIBING','Распознавание речи и подготовка сцен');
+          await stage('TRANSCRIBING','Распознавание речи и подготовка сцен','transcribe');
           const source=await get('original'), output=path.join(folder,'analysis.json');
           // .scena is not in Git, so a fresh copy of the project has no Python environment until setup runs.
           if(path.isAbsolute(python)&&!existsSync(python))throw fail('Не установлено Python-окружение для анализа видео. Запустите Setup-Python.cmd в папке проекта, затем перезапустите студию.',503);
           await run(python,[path.join(workspace,'server/ai/media.py'),project.hasAudio?'analyze':'inspect','--input',source,'--output',output],{timeout:12*3600000,signal:operation.signal});
-          project.analysis=JSON.parse(await fs.readFile(output,'utf8')); project.analysis.hasAudio=project.hasAudio; project.analysis.segments||=[]; await save();
+          project.analysis=JSON.parse(await fs.readFile(output,'utf8')); project.analysis.hasAudio=project.hasAudio; project.analysis.segments||=[]; measured('transcribe',project.duration); await save();
         }
         if(!project.analysisResult) {
-          await stage('ANALYZING','Анализ содержания и выбор законченных историй');
+          await stage('ANALYZING','Анализ содержания и выбор законченных историй','analyze');
           const proxy=await get('proxy');
             project.analysisWindows||=[];
             const analyzeWindow=async(window,metadata,method,context)=>{
@@ -148,12 +157,14 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
             });
           project.candidates=result.candidates.sort((a,b)=>b.score-a.score).map(item=>({...item,id:randomUUID()}));project.analysisModel=result.model;
           project.analysisResult=result;
-          project.analyzedAt=new Date().toISOString(); await save();
+          project.analyzedAt=new Date().toISOString(); measured('analyze',project.duration); await save();
         }
         await sourceUsage();
         if(!project.candidates.length)throw fail('В этом видео не найдено подходящих моментов. Попробуйте другой материал.');
-        await stage('ANALYZING','Монтаж готовых вертикальных роликов');
+        await stage('ANALYZING','Монтаж готовых вертикальных роликов','clips');
+        const pending=project.candidates.filter(candidate=>!candidate.ready||!project.files[candidate.id]).length;
         await renderCandidates();
+        if(pending===project.candidates.length)measured('clips',project.duration);
         project.status='READY';await save();
       }
       if(job.type==='asset') {
@@ -180,7 +191,7 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
         await save();await fs.rm(input,{force:true});
       }
       if(job.type==='export'&&job.payload.capcut) {
-        await stage('EXPORTING','Собираем пакет для CapCut');
+        await stage('EXPORTING','Собираем пакет для CapCut','package');
         const settings=normalizeSettings(job.payload.settings,project.duration),original=await get('original'),packId=`capcut-${randomUUID()}`,clean=path.join(folder,'clean.mp4');
         // A clean render (no burned-in captions or banner) keeps everything editable in CapCut.
         await render({input:original,output:clean,settings:{...settings,subtitles:false,musicId:''},analysis:project.analysis,ad:null,music:null,preview:false,onProgress,signal:operation.signal});
@@ -196,10 +207,11 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
         const archive=path.join(folder,`${packId}.zip`);await writeZip(archive,entries);
         await put(packId,archive,'application/zip',true,`project-${Number(job.payload.number)||1}-capcut.zip`);
         project.capcutPacks={...(project.capcutPacks||{}),[job.payload.key||'current']:{fileId:packId,jobId:job.id,createdAt:new Date().toISOString()}};
+        measured('package',timelineDuration(settings));
         project.status=job.payload.previousStatus||'READY';project.error=null;await save();
       }
       if(['preview','revise','export'].includes(job.type)&&!job.payload.capcut) {
-        await stage(job.type==='export'?'EXPORTING':'RENDERING',job.type==='revise'?'Применяем правки':'Монтируем ролик');
+        await stage(job.type==='export'?'EXPORTING':'RENDERING',job.type==='revise'?'Применяем правки':'Монтируем ролик',job.type==='export'?'export':job.type==='revise'?'revise':'render');
         let settings=normalizeSettings(job.payload.settings||project.settings,project.duration);
         let projectAd=project.ad,adEdited=false;
         if(job.type==='revise') {
@@ -230,6 +242,7 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
         const music=settings.musicId?await get(settings.musicId):null;
         await render({input:original,output,settings,analysis:project.analysis,ad,music,preview:job.type!=='export',onProgress,signal:operation.signal});
         await put(versionId,output,'video/mp4',job.type==='export');
+        measured(job.type==='export'?'export':job.type==='revise'?'revise':'render',adTotalDuration(ad,timelineDuration(settings)));
         project.settings=settings;project.ad=projectAd;
         if(job.type==='export'){
           project.exports||=project.finalFile?[{id:project.finalFile}]:[];

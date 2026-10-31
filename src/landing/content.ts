@@ -50,7 +50,7 @@ export const content: Record<Language, LandingCopy> = {
     faqTitle: 'Остались вопросы?', faqDescription: 'Самое важное о работе со SCENZA.',
     faq: [
       { question: 'Что делает SCENZA?', answer: 'SCENZA помогает создавать короткие ролики из длинных записей: находить смены сцен, выбирать фрагменты, менять формат кадра, добавлять текст и баннеры, а затем сохранять MP4.' },
-      { question: 'Какие исходники поддерживаются?', answer: 'Лучше всего SCENZA работает с видео до 30 минут: анализ проходит быстрее, а ролики получаются точнее. В локальной студии можно загрузить MP4, MOV, WebM, MKV и AVI объёмом до 2 ГБ. Импорт по ссылке доступен для общедоступных видео и зависит от ограничений источника. Закрытые записи и защищённые плееры не поддерживаются.' },
+      { question: 'Какие исходники поддерживаются?', answer: 'Видео до 20 минут, файлы MP4, MOV, MKV, WebM или M4V до 20 ГБ, разрешение до 8192 px по стороне. Из одного видео получается до 10 готовых роликов длиной до 2 минут. Ограничения одинаковы для всех тарифов. Импорт по ссылке доступен для общедоступных видео и зависит от ограничений источника. Закрытые записи и защищённые плееры не поддерживаются.' },
       { question: 'Нужен ли опыт монтажа?', answer: 'Начать можно с выбора готовой сцены. Затем достаточно проверить начало и конец фрагмента, кадрирование и звук.' },
       { question: 'Можно ли править субтитры?', answer: 'Да. В рабочей студии вы вводите и редактируете текст вручную, выбираете стиль и встраиваете его в ролик. Автоматическое распознавание речи пока не подключено.' },
       { question: 'Как получить готовое видео?', answer: 'В рабочей студии нажмите «Экспортировать», дождитесь завершения обработки и скачайте MP4. Видео можно загрузить на нужную площадку самостоятельно.' },
@@ -100,7 +100,7 @@ export const content: Record<Language, LandingCopy> = {
     faqTitle: 'A few things to know', faqDescription: 'The essentials of working with SCENZA.',
     faq: [
       { question: 'What does SCENZA do?', answer: 'SCENZA helps you create short videos from long recordings: detect scene changes, choose clips, adjust framing, add text and banners, then export an MP4.' },
-      { question: 'Which source files are supported?', answer: 'SCENZA works best with videos up to 30 minutes: analysis is faster and the clips are more precise. The local studio accepts MP4, MOV, WebM, MKV and AVI files up to 2 GB. Link imports work with publicly accessible videos and depend on the source’s restrictions. Private recordings and protected players are not supported.' },
+      { question: 'Which source files are supported?', answer: 'Videos up to 20 minutes, MP4, MOV, MKV, WebM or M4V files up to 20 GB, resolution up to 8192 px per side. One video gives up to 10 finished clips, each up to 2 minutes. The limits are the same on every plan. Link imports work with publicly accessible videos and depend on the source’s restrictions. Private recordings and protected players are not supported.' },
       { question: 'Do I need editing experience?', answer: 'Start by choosing a detected scene, then check its start and end, framing and audio.' },
       { question: 'Can I edit subtitles?', answer: 'Yes. In the working studio, you can enter and edit text manually, choose its style and burn it into your video. Automatic speech recognition is not connected yet.' },
       { question: 'How do I get my finished video?', answer: 'In the working studio, select Export, wait for processing to finish and download the MP4. You can upload it to your chosen platform yourself.' },

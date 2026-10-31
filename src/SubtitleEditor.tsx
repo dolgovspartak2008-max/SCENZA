@@ -16,13 +16,18 @@ export const subtitleFonts: { id: string; family: string; label: string }[] = [
   { id: 'nunito', family: 'SCENZA Nunito Black', label: 'Nunito' },
   { id: 'oswald', family: 'SCENZA Oswald Bold', label: 'Oswald' },
 ];
-const presets: Record<string, { font: string; scale: number; color: string; outline: number; label: string }> = {
-  Classic: { font: 'montserrat', scale: 1, color: '#ffffff', outline: 4, label: 'Классика' },
-  Bold: { font: 'rubik', scale: 1.12, color: '#ffdf00', outline: 5, label: 'TikTok' },
-  Dynamic: { font: 'montserrat', scale: 1, color: '#ffffff', outline: 4, label: 'Караоке' },
-  Minimal: { font: 'manrope', scale: .95, color: '#ffffff', outline: 2, label: 'Минимал' },
-  Cinematic: { font: 'oswald', scale: 1.05, color: '#faede4', outline: 2, label: 'Кино' },
+// outline and shadow are the libass sizes at 1080 px width; `upcoming` is the karaoke colour of words not yet spoken.
+const presets: Record<string, { font: string; scale: number; color: string; outline: number; shadow: number; upcoming?: string; label: string }> = {
+  Classic: { font: 'montserrat', scale: 1, color: '#ffffff', outline: 4, shadow: 0, label: 'Классика' },
+  Bold: { font: 'rubik', scale: 1.12, color: '#ffdf00', outline: 5, shadow: 2, label: 'TikTok' },
+  Dynamic: { font: 'montserrat', scale: 1, color: '#ffffff', outline: 4, shadow: 1, upcoming: '#ffdf00', label: 'Караоке' },
+  Minimal: { font: 'manrope', scale: .95, color: '#ffffff', outline: 2, shadow: 1, label: 'Минимал' },
+  Cinematic: { font: 'oswald', scale: 1.05, color: '#faede4', outline: 2, shadow: 1, label: 'Кино' },
 };
+// One neutral backdrop and one sentence for every style, so styles are compared with each other and not with a busy frame.
+const demoText = 'Так будут выглядеть субтитры в вашем ролике';
+const demoAccent = 'субтитры';
+const backdrops = { dark: { label: 'Тёмный фон', src: '/assets/subtitle-preview-dark.webp' }, light: { label: 'Светлый фон', src: '/assets/subtitle-preview-light.webp' } } as const;
 const palettes = [['#ffffff', '#ffdf00'], ['#ffffff', '#35ead0'], ['#ffdf00', '#ff4d6d'], ['#ffffff', '#ff8a00', '#3fd0ff'], ['#b8ff3c', '#ffffff']];
 const presetY = { top: 24, center: 55, bottom: 82 } as const;
 let fontsLoaded = false;
@@ -36,11 +41,13 @@ function loadFonts() {
 }
 const tokens = (value: string) => value.toLocaleLowerCase('ru-RU').match(/[\p{L}\p{N}]+/gu) || [];
 
-type Props<T extends SubtitleSettings> = { settings: T; onChange: (next: T) => void; sample: string; poster?: string; working: boolean; changed: boolean; onApply: () => void };
+type Props<T extends SubtitleSettings> = { settings: T; onChange: (next: T) => void };
 
-export default function SubtitleEditor<T extends SubtitleSettings>({ settings, onChange, sample, poster, working, changed, onApply }: Props<T>) {
+export default function SubtitleEditor<T extends SubtitleSettings>({ settings, onChange }: Props<T>) {
   const stage = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(240);
+  const [backdrop, setBackdrop] = useState<keyof typeof backdrops>('dark');
+  const [spoken, setSpoken] = useState(3);
   useEffect(loadFonts, []);
   useEffect(() => {
     const element = stage.current;
@@ -60,25 +67,30 @@ export default function SubtitleEditor<T extends SubtitleSettings>({ settings, o
   const y = settings.subtitleY ?? null;
   // The server sizes text as subtitleSize/1080 of the frame width for every format.
   const fontSize = settings.subtitleSize * preset.scale * width / 1080;
-  const words = useMemo(() => sample.split(/\s+/).filter(Boolean).slice(0, 7), [sample]);
-  const accents = useMemo(() => {
-    const phrases = (settings.keywords ?? []).map(tokens).filter(item => item.length);
-    const list = words.map(word => tokens(word)[0] ?? ''), selected = new Set<number>();
-    for (const phrase of phrases) for (let i = 0; i <= list.length - phrase.length; i++) if (phrase.every((token, offset) => token === list[i + offset])) phrase.forEach((_, offset) => selected.add(i + offset));
-    return selected;
-  }, [words, settings.keywords]);
-  let spoken = 0;
+  const words = useMemo(() => demoText.split(' '), []);
+  const karaoke = settings.subtitleStyle === 'Dynamic';
+  // Karaoke words light up one by one, as \\k does in the rendered video; reduced motion keeps a still frame.
+  useEffect(() => {
+    if (!karaoke || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const timer = window.setInterval(() => setSpoken(value => value >= words.length ? 0 : value + 1), 450);
+    return () => window.clearInterval(timer);
+  }, [karaoke, words.length]);
+  let counted = 0;
   const painted = words.map((word, index) => {
-    const color = accents.has(index) ? accent : multi ? colors[Math.floor(spoken / every) % colors.length] : mainColor;
-    if (/[\p{L}\p{N}]/u.test(word)) spoken++;
+    const color = tokens(word)[0] === demoAccent ? accent : karaoke && index >= spoken ? preset.upcoming : multi ? colors[Math.floor(counted / every) % colors.length] : mainColor;
+    if (/[\p{L}\p{N}]/u.test(word)) counted++;
     return <span key={index} style={{ color }}>{word} </span>;
   });
+  // The renderer shrinks a caption whose longest word would not fit between the side margins; the preview does the same.
+  const longest = Math.max(...words.map(word => word.length));
+  const shown = Math.min(fontSize, width * .82 / Math.max(1, longest * .68));
+  const outline = Math.max(1, preset.outline * width / 1080), shadow = preset.shadow * width / 1080;
   const position: CSSProperties = y !== null ? { bottom: `${100 - y}%` } : settings.subtitlePosition === 'top' ? { top: '18%' } : settings.subtitlePosition === 'center' ? { top: '50%', transform: 'translateY(-50%)' } : { bottom: '18%' };
   const aspect = settings.format === '9:16' ? '9 / 16' : settings.format === '1:1' ? '1 / 1' : '16 / 9';
 
   return <section className="panel ai-subtitles" aria-labelledby="ai-subtitles-title">
     <div className="ai-section-heading"><h2 id="ai-subtitles-title">Субтитры</h2><label className="ai-checkbox"><input type="checkbox" checked={settings.subtitles} onChange={event => set({ subtitles: event.target.checked })} />Показывать субтитры</label></div>
-    <p className="ai-note">Шрифт, цвета и высота меняются вручную — без запросов к AI и без списания токенов. Предпросмотр справа обновляется сразу.</p>
+    <p className="ai-note">Шрифт, цвета и высота меняются вручную — без запросов к AI и без списания токенов. Предпросмотр обновляется сразу.</p>
     <div className="ai-subtitles-layout">
       <div className="ai-subtitles-controls" aria-disabled={!settings.subtitles}>
         <fieldset className="ai-subtitle-styles"><legend>Стиль</legend>{Object.entries(presets).map(([value, item]) => <button key={value} type="button" aria-pressed={settings.subtitleStyle === value} onClick={() => set({ subtitleStyle: value })}>{item.label}</button>)}</fieldset>
@@ -99,13 +111,13 @@ export default function SubtitleEditor<T extends SubtitleSettings>({ settings, o
       </div>
       <div className="ai-subtitles-preview">
         <div ref={stage} className="ai-subtitle-stage" style={{ aspectRatio: aspect }} aria-label="Предпросмотр субтитров">
-          {poster && <img src={poster} alt="" aria-hidden="true" />}
-          {settings.subtitles && <p style={{ ...position, fontFamily: `'${font.family}', Manrope, sans-serif`, fontSize: `${Math.max(9, fontSize)}px`, WebkitTextStroke: `${Math.max(1, preset.outline * 2 * width / 1080)}px #101010` }}>{painted}</p>}
+          <img src={backdrops[backdrop].src} alt="" aria-hidden="true" />
+          {settings.subtitles && <p style={{ ...position, fontFamily: `'${font.family}', Manrope, sans-serif`, fontSize: `${Math.max(9, shown)}px`, WebkitTextStroke: `${outline * 2}px #101010`, textShadow: shadow ? `${shadow}px ${shadow}px 0 #00000070` : 'none' }}>{painted}</p>}
           {settings.format === '9:16' && <span className="ai-subtitle-guide" style={{ bottom: 0 }} aria-hidden="true" />}
         </div>
-        <small className="ai-note">Пунктир — зона, где TikTok и Reels показывают подпись и кнопки.</small>
+        <div className="ai-subtitle-mode" role="group" aria-label="Фон предпросмотра">{(Object.keys(backdrops) as (keyof typeof backdrops)[]).map(key => <button key={key} type="button" aria-pressed={backdrop === key} onClick={() => setBackdrop(key)}>{backdrops[key].label}</button>)}</div>
+        <small className="ai-note">Демонстрационный фон и текст одинаковы для всех стилей. Слово «{demoAccent}» показывает цвет ключевых слов. Пунктир — зона, где TikTok и Reels показывают подпись и кнопки. Ваше видео не меняется.</small>
       </div>
     </div>
-    <div className="ai-actions"><button type="button" className="button primary" disabled={working || !changed} onClick={onApply}>{changed ? 'Применить к ролику — бесплатно' : 'Настройки применены'}</button></div>
   </section>;
 }

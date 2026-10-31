@@ -150,6 +150,8 @@ export async function createStore({ dataDir, env = process.env }) {
       });
     },
     async listProjects(ownerId) { return db.prepare('SELECT payload FROM projects WHERE owner_id=? ORDER BY rowid DESC').all(identity(ownerId)).map(row => decode(row.payload)); },
+    // Measured stage durations of recent projects (no owner data) feed the processing-time estimate.
+    async recentTimings(limit = 200) { return db.prepare("SELECT json_extract(payload,'$.timings') AS timings FROM projects WHERE json_extract(payload,'$.timings') IS NOT NULL ORDER BY rowid DESC LIMIT ?").all(limit).map(row => decode(row.timings)).filter(Boolean); },
     async getProject(ownerId, id) { const row = get(ownerId, id); return row ? decode(row.payload) : null; },
     async saveProject(ownerId, project) {
       const value = projectValue(ownerId, project);
@@ -280,6 +282,7 @@ function supabaseStore(env) {
       return Array.isArray(rows) ? rows[0] : rows;
     },
     async listProjects(ownerId) { return (await request(query('scenza_video_projects', { owner_id: `eq.${identity(ownerId)}`, select: 'payload', order: 'created_at.desc' }))).map(row => row.payload); },
+    async recentTimings(limit = 200) { return (await request(query('scenza_video_projects', { select: 'timings:payload->timings', 'payload->timings': 'not.is.null', order: 'updated_at.desc', limit: String(limit) }))).map(row => row.timings).filter(Boolean); },
     async getProject(ownerId, id) { const rows = await request(query('scenza_video_projects', { owner_id: `eq.${identity(ownerId)}`, id: `eq.${identity(id)}`, select: 'payload' })); return rows[0]?.payload || null; },
     async saveProject(ownerId, project) { const value = projectValue(ownerId, project); const rows = await request('rpc/scenza_video_save_project', { p_owner: ownerId, p_id: value.id, p_payload: value }); if (!rows?.length) throw new Error('Project owner access denied'); return rows[0].payload; },
     async enqueue(ownerId, projectId, type, payload = {}) { if (!jobTypes.has(type)) throw new Error('Invalid job type'); return checkedJob('enqueue', { p_owner: identity(ownerId), p_project: identity(projectId), p_type: type, p_payload: payload }, 'Project not found'); },

@@ -211,7 +211,7 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
       if (!item) return send('client', id, 'Кнопка недействительна. Начните регистрацию заново.', clientRows());
       if (item.loginToken) await service.beginWebsiteLogin(item.loginToken, id);
       let user;
-      try { user = await service.registerTelegram({ id, name: [person.first_name, person.last_name].filter(Boolean).join(' '), username: person.username }, { termsAccepted: true, dataConsent: true }, key); }
+      try { user = await service.registerTelegram({ id, name: [person.first_name, person.last_name].filter(Boolean).join(' '), username: person.username }, { termsAccepted: true, dataConsent: true }, key, ...(item.loginToken ? [item.loginToken] : [])); }
       catch (error) { pending.set(data.slice(8), item); throw error; }
       if (item.loginToken) {
         await service.confirmWebsiteLogin(item.loginToken, id);

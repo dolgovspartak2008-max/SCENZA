@@ -5,12 +5,41 @@ import { pipeline } from 'node:stream/promises';
 import { Transform } from 'node:stream';
 import { createStore } from './store.mjs';
 import { createStorage } from './storage.mjs';
-import { fail, normalizeSettings, normalizeAd, timelineDuration } from './render.mjs';
+import { fail, normalizeSettings, normalizeAd, timelineDuration, SOURCE_LIMITS } from './render.mjs';
 const AD_FIELDS = ['position','width','height','fill','fit','start','duration','opacity','offsetX','offsetY','fade','background','backgroundColor'];
 import { PRIMARY_VIDEO_MODEL, ANALYSIS_VERSION } from './openai.mjs';
 import { createTokens, LOCAL_OWNER } from './tokens.mjs';
 
-const MAX_FILE = 20 * 1024 ** 3, CHUNK = 8 * 1024 ** 2;
+const MAX_FILE = SOURCE_LIMITS.maxBytes, CHUNK = 8 * 1024 ** 2;
+const SOURCE_NAME = new RegExp(`\\.(${SOURCE_LIMITS.formats.join('|')})$`, 'i');
+const formatsText = SOURCE_LIMITS.formats.filter(format => format !== 'm4v').map(format => format === 'webm' ? 'WebM' : format.toUpperCase()).join(', ');
+const sourceError = () => fail(`Выберите видео ${formatsText} до ${MAX_FILE / 1024 ** 3} ГБ.`);
+// Measured steps of the pipeline; each record is seconds spent per second of source (or of the finished clip).
+const PHASES = ['preprocess', 'transcribe', 'analyze', 'clips', 'render', 'revise', 'export', 'package'];
+export function estimateRates(timings) {
+  const rates = {};
+  for (const phase of PHASES) {
+    const values = timings.map(entry => entry?.[phase]).filter(entry => entry && entry.seconds > 0 && entry.units > 0).map(entry => entry.seconds / entry.units).sort((a, b) => a - b);
+    // Fewer than three real runs give no honest range; the client then says the time is not known yet.
+    if (values.length < 3) continue;
+    const at = share => values[Math.min(values.length - 1, Math.round(share * (values.length - 1)))];
+    rates[phase] = { low: at(.25), high: at(.8), samples: values.length };
+  }
+  return rates;
+}
+// Reusable look of a clip. Text, timings, chosen fragments, keywords and uploaded music belong to one video and are never saved.
+export const TEMPLATE_KEYS = ['format', 'cropMode', 'cropSmoothing', 'muted', 'subtitles', 'subtitleStyle', 'subtitleSize', 'subtitleColor', 'subtitleFont', 'subtitleColors', 'subtitleColorEvery', 'subtitleAccentColor', 'subtitleY', 'subtitlePosition', 'musicVolume'];
+export function templateSettings(input) {
+  const settings = {}, skipped = [];
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return { settings, skipped };
+  for (const key of TEMPLATE_KEYS) {
+    if (!Object.hasOwn(input, key)) continue;
+    try { settings[key] = normalizeSettings({ start: 0, end: 30, [key]: input[key] }, 60)[key]; }
+    catch { skipped.push(key); }
+  }
+  return { settings, skipped };
+}
+const MAX_TEMPLATES = 20;
 const projectView = ({analysis,analysisWindows,analysisResult,analysisCache,sourceFingerprint,editCache,adPreviewJobId,...project}) => project;
 const readyClips = project => [...(project.exports ?? (project.finalFile ? [{ id: project.finalFile }] : [])), ...(project.candidates || []).filter(candidate => candidate.ready).map(candidate => ({...candidate,format:candidate.settings?.format||'9:16'}))];
 const busyStates = ['PREPROCESSING','TRANSCRIBING','ANALYZING','RENDERING','EXPORTING'];
@@ -48,6 +77,35 @@ export async function createVideoApi({ dataDir, env = process.env }) {
     const cached = numberCache.get(ownerId);
     return (cached?.has(project.id) ? cached : await numbersFor(ownerId)).get(project.id) || 1;
   };
+  let estimates = null;
+  // Templates live in one small JSON file per owner next to the video data, so they survive reloads and new sessions.
+  const templateFile = ownerId => path.join(root, 'templates', `${createHash('sha256').update(String(ownerId)).digest('hex').slice(0, 32)}.json`);
+  const templateWrites = new Map();
+  async function readTemplates(ownerId) {
+    const value = await fs.readFile(templateFile(ownerId), 'utf8').then(JSON.parse).catch(error => { if (error.code === 'ENOENT') return null; throw fail('Не удалось прочитать шаблоны.', 500); });
+    const items = Array.isArray(value?.items) ? value.items : [];
+    return { items, defaultId: items.some(item => item.id === value?.defaultId) ? value.defaultId : null };
+  }
+  function updateTemplates(ownerId, change) {
+    const run = (templateWrites.get(ownerId) || Promise.resolve()).catch(() => {}).then(async () => {
+      const list = await readTemplates(ownerId), result = change(list), file = templateFile(ownerId), temporary = `${file}.${randomUUID()}.tmp`;
+      await fs.mkdir(path.dirname(file), { recursive: true });
+      await fs.writeFile(temporary, JSON.stringify(list)); await fs.rename(temporary, file);
+      return { result, list };
+    });
+    templateWrites.set(ownerId, run);
+    return run;
+  }
+  const templateName = value => { const name = typeof value === 'string' ? value.trim().replace(/\s+/g, ' ') : ''; if (!name || name.length > 60) throw fail('Назовите шаблон: от 1 до 60 символов.'); return name; };
+  // `templateId: null` means "no template"; when it is omitted, the owner's default template is used.
+  async function chosenTemplate(ownerId, templateId) {
+    if (templateId === null) return null;
+    const list = await readTemplates(ownerId), id = templateId === undefined ? list.defaultId : templateId;
+    if (!id) return null;
+    const item = list.items.find(entry => entry.id === id);
+    if (!item) { if (templateId === undefined) return null; throw fail('Шаблон не найден. Выберите другой.', 404); }
+    return { id: item.id, name: item.name, settings: templateSettings(item.settings).settings };
+  }
   const view = async (ownerId, project) => ({ ...projectView(project), title: projectTitle(await numberOf(ownerId, project)) });
   const nextNumber = async ownerId => Math.max(0, ...(await numbersFor(ownerId)).values()) + 1;
   const send = (response, value, status = 200) => { response.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' }); response.end(JSON.stringify(value)); };
@@ -118,19 +176,55 @@ export async function createVideoApi({ dataDir, env = process.env }) {
         if (!(await store.listProjects(ownerId)).some(project => readyClips(project).length)) throw fail('Сначала подготовьте и опубликуйте ролик из SCENZA.', 409);
         send(response, await tokens.publicationBonus(ownerId, (await json(request)).url)); return true;
       }
-      if (route === '/api/video/config' && method === 'GET') { send(response, { aiReady: !!env.OPENROUTER_API_KEY?.trim(), maxFileSize: MAX_FILE, chunkSize: CHUNK }); return true; }
+      if (route === '/api/video/config' && method === 'GET') { send(response, { aiReady: !!env.OPENROUTER_API_KEY?.trim(), maxFileSize: MAX_FILE, chunkSize: CHUNK, limits: SOURCE_LIMITS }); return true; }
+      if (route === '/api/video/estimate' && method === 'GET') {
+        if (!estimates || estimates.until < Date.now()) estimates = { until: Date.now() + 5 * 60000, rates: estimateRates(await store.recentTimings(300).catch(() => [])) };
+        send(response, { rates: estimates.rates }); return true;
+      }
+      if (route === '/api/video/templates' && method === 'GET') { send(response, await readTemplates(ownerId)); return true; }
+      if (route === '/api/video/templates' && method === 'POST') {
+        const body = await json(request), name = templateName(body.name), { settings, skipped } = templateSettings(body.settings);
+        if (!Object.keys(settings).length) throw fail('В шаблоне нет настроек для сохранения.');
+        const saved = await updateTemplates(ownerId, list => {
+          if (list.items.length >= MAX_TEMPLATES) throw fail(`Можно сохранить до ${MAX_TEMPLATES} шаблонов. Удалите ненужный.`, 409);
+          const now = new Date().toISOString(), item = { id: randomUUID(), name, settings, createdAt: now, updatedAt: now };
+          list.items.push(item); if (body.default === true) list.defaultId = item.id;
+          return item;
+        });
+        send(response, { template: saved.result, skipped, ...saved.list }, 201); return true;
+      }
+      const templateMatch = /^\/api\/video\/templates\/([\w-]+)$/.exec(route);
+      if (templateMatch) {
+        const body = method === 'DELETE' ? {} : await json(request);
+        const saved = await updateTemplates(ownerId, list => {
+          const item = list.items.find(entry => entry.id === templateMatch[1]);
+          if (!item) throw fail('Шаблон не найден.', 404);
+          if (method === 'DELETE') { list.items = list.items.filter(entry => entry !== item); if (list.defaultId === item.id) list.defaultId = null; return null; }
+          if (method !== 'PUT') throw fail('Метод не поддерживается.', 405);
+          if (body.name !== undefined) item.name = templateName(body.name);
+          if (body.settings !== undefined) { const next = templateSettings(body.settings); if (!Object.keys(next.settings).length) throw fail('В шаблоне нет настроек для сохранения.'); item.settings = next.settings; }
+          if (body.default === true) list.defaultId = item.id; else if (body.default === false && list.defaultId === item.id) list.defaultId = null;
+          item.updatedAt = new Date().toISOString();
+          return item;
+        });
+        send(response, { template: saved.result, ...saved.list }); return true;
+      }
       if (route === '/api/video/projects' && method === 'GET') { const projects = await store.listProjects(ownerId), numbers = projectNumbers(projects); send(response, { projects: projects.map(project => ({ ...projectView(project), title: projectTitle(numbers.get(project.id) || 1) })) }); return true; }
       if (route === '/api/video/import' && method === 'POST') {
         const body = await json(request);
         if (typeof body.url !== 'string' || body.url.length > 4000) throw fail('Введите прямую ссылку на видео.');
         const { publicUrl } = await import('../index.mjs'); await publicUrl(body.url);
-        const number = await nextNumber(ownerId), project = { id:randomUUID(), number, title:projectTitle(number), sourceUrl:body.url, createdAt:new Date().toISOString(), status:'UPLOADING', upload:{name:'Видео по ссылке',size:0,bytes:0},files:{},candidates:[],versions:[],music:[],retention:'keep-original' };
+        const template = await chosenTemplate(ownerId, body.templateId);
+        const number = await nextNumber(ownerId), project = { id:randomUUID(), number, title:projectTitle(number), sourceUrl:body.url, createdAt:new Date().toISOString(), status:'UPLOADING', upload:{name:'Видео по ссылке',size:0,bytes:0},files:{},candidates:[],versions:[],music:[],retention:'keep-original',...(template?{template}:{}) };
         await store.saveProject(ownerId,project); const job = await queue(ownerId,project,'preprocess'); send(response,{project:await view(ownerId,project),job},202);return true;
       }
       if (route === '/api/video/projects' && method === 'POST') {
         const body = await json(request);
-        if (typeof body.name !== 'string' || !/\.(mp4|mov|mkv|webm|m4v)$/i.test(body.name) || !Number.isSafeInteger(body.size) || body.size < 1 || body.size > MAX_FILE) throw fail('Выберите MP4, MOV, MKV или WebM до 20 ГБ.');
-        const number = await nextNumber(ownerId), project = { id: randomUUID(), number, title: projectTitle(number), createdAt: new Date().toISOString(), status: 'UPLOADING', upload: { name: path.basename(body.name), size: body.size, bytes: 0 }, files: {}, candidates: [], versions: [], music: [], retention: 'keep-original' };
+        if (typeof body.name !== 'string' || !SOURCE_NAME.test(body.name) || !Number.isSafeInteger(body.size) || body.size < 1 || body.size > MAX_FILE) throw sourceError();
+        // The browser-reported length only stops an obviously long file early; the worker checks the real length with ffprobe.
+        if (Number.isFinite(body.duration) && body.duration > SOURCE_LIMITS.maxSeconds) throw fail(`Видео длиннее ${SOURCE_LIMITS.maxSeconds / 60} минут. Обрежьте его или загрузите более короткий фрагмент.`);
+        const template = await chosenTemplate(ownerId, body.templateId);
+        const number = await nextNumber(ownerId), project = { id: randomUUID(), number, title: projectTitle(number), createdAt: new Date().toISOString(), status: 'UPLOADING', upload: { name: path.basename(body.name), size: body.size, bytes: 0 }, files: {}, candidates: [], versions: [], music: [], retention: 'keep-original', ...(template ? { template } : {}) };
         await store.saveProject(ownerId, project); numberCache.delete(ownerId); send(response, { project: await view(ownerId, project) }, 201); return true;
       }
       const jobMatch = /^\/api\/video\/jobs\/([\w-]+)(\/retry)?$/.exec(route);

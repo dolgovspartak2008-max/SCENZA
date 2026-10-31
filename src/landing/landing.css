@@ -31,39 +31,39 @@
 .scenza-header-actions .scenza-button { min-height: 38px; padding: 9px 18px; font-size: .75rem; }
 .scenza-menu-button { display: none; margin-left: auto; width: 44px; height: 44px; align-items: center; justify-content: center; border: 1px solid #29424a; border-radius: 50%; }
 .scenza-mobile-menu, .scenza-account-chevron { display: none; }
-/* Mobile menu: a floating card over the dimmed page — brand and close, large links with chevrons, account, main action, language. */
+/* Mobile menu: a compact card in the top-right corner over the dimmed page — brand and close, links with chevrons, account, main action, language. */
 @media (max-width: 1000px) {
   .scenza-mobile-menu { display: block; position: fixed; inset: 0; z-index: 70; padding: max(12px, env(safe-area-inset-top)) 14px max(14px, env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; background: #01080dcc; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); animation: scenza-menu-fade .2s ease-out; }
-  .scenza-mobile-nav { display: flex; flex-direction: column; max-width: 520px; margin: 0 auto; border: 1px solid #1f3a40; border-radius: 26px; background: linear-gradient(180deg, #0a1b20, #071418); box-shadow: 0 30px 80px #000a; animation: scenza-menu-drop .26s cubic-bezier(.22, 1, .36, 1); }
-  .scenza-mobile-nav-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 20px 14px 8px 22px; }
-  .scenza-mobile-nav-head .logo-mark { width: 42px; height: 42px; }
-  .scenza-mobile-nav-head .logo-word { display: block; font-size: 1.6rem; }
-  .scenza-mobile-nav-head .logo-word small { font-size: .62rem; }
-  .scenza-mobile-nav-close { display: grid; place-items: center; flex-shrink: 0; width: 48px; height: 48px; border-radius: 50%; color: #eef6f7; transition: background-color .15s; }
+  .scenza-mobile-nav { display: flex; flex-direction: column; width: min(320px, 100%); margin: 0 0 0 auto; border: 1px solid #1f3a40; border-radius: 20px; background: linear-gradient(180deg, #0a1b20, #071418); box-shadow: 0 24px 64px #000a; transform-origin: top right; animation: scenza-menu-drop .22s cubic-bezier(.22, 1, .36, 1); }
+  .scenza-mobile-nav-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 8px 4px 16px; }
+  .scenza-mobile-nav-head .logo-mark { width: 32px; height: 32px; }
+  .scenza-mobile-nav-head .logo-word { display: block; font-size: 1.2rem; }
+  .scenza-mobile-nav-head .logo-word small { font-size: .55rem; }
+  .scenza-mobile-nav-close { display: grid; place-items: center; flex-shrink: 0; width: 44px; height: 44px; border: 1px solid #2b4a50; border-radius: 50%; color: #eef6f7; transition: background-color .15s, border-color .15s; }
   .scenza-mobile-nav-close:hover { background: #ffffff10; }
   .scenza-mobile-nav-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .scenza-mobile-nav ul { margin: 0; padding: 4px 22px 8px; list-style: none; }
+  .scenza-mobile-nav ul { margin: 0; padding: 2px 16px 4px; list-style: none; }
   .scenza-mobile-nav li + li { border-top: 1px solid #1a3137; }
-  .scenza-mobile-nav li a { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 64px; padding: 6px 2px; color: #f1f7f8; font-size: 1.3rem; font-weight: 500; letter-spacing: -.01em; }
+  .scenza-mobile-nav li a { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 4px 2px; color: #f1f7f8; font-size: 1.05rem; font-weight: 500; letter-spacing: -.01em; }
   .scenza-mobile-nav li a svg { flex-shrink: 0; color: #8aa3aa; transition: color .15s, translate .15s; }
   .scenza-mobile-nav li a:hover svg { color: var(--accent); translate: 2px 0; }
-  .scenza-mobile-nav-foot { display: grid; gap: 16px; padding: 18px 22px 20px; border-top: 1px solid #1a3137; }
-  .scenza-mobile-nav-foot > .scenza-button { width: 100%; min-height: 60px; border-radius: 18px; font-size: 1.12rem; }
-  .scenza-mobile-nav-foot > .scenza-mobile-nav-start { justify-content: space-between; padding-inline: 24px 20px; font-size: 1.28rem; }
+  .scenza-mobile-nav-foot { display: grid; gap: 10px; padding: 12px 16px 10px; border-top: 1px solid #1a3137; }
+  .scenza-mobile-nav-foot > .scenza-button { width: 100%; min-height: 48px; border-radius: 14px; font-size: 1rem; }
+  .scenza-mobile-nav-foot > .scenza-mobile-nav-start { justify-content: space-between; padding-inline: 18px 14px; font-size: 1.05rem; }
   .scenza-mobile-nav .scenza-language { justify-self: center; gap: 0; padding: 0; border: 0; }
   .scenza-mobile-nav .scenza-language button { min-width: 44px; min-height: 44px; padding: 8px 4px; background: transparent; font-size: .92rem; }
   .scenza-mobile-nav .scenza-language button + button::before { content: '/'; content: '/' / ''; margin-right: 12px; color: #4f676e; font-weight: 400; }
   .scenza-mobile-nav-account { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-width: 0; }
   .scenza-mobile-nav-account .scenza-profile { order: -1; min-width: 0; }
-  .scenza-mobile-nav-account .scenza-account-button { max-width: 100%; min-height: 60px; gap: 16px; padding: 0 4px 0 0; border: 0; background: none; box-shadow: none; color: #f1f7f8; font-size: 1.2rem; font-weight: 500; }
+  .scenza-mobile-nav-account .scenza-account-button { max-width: 100%; min-height: 48px; gap: 12px; padding: 0 4px 0 0; border: 0; background: none; box-shadow: none; color: #f1f7f8; font-size: 1rem; font-weight: 500; }
   .scenza-mobile-nav-account .scenza-account-button::before, .scenza-mobile-nav-account .scenza-account-button::after { display: none; }
-  .scenza-mobile-nav-account .scenza-account-button > svg:first-child { box-sizing: content-box; width: 22px; height: 22px; padding: 16px; border: 1px solid #2b4a50; border-radius: 50%; }
+  .scenza-mobile-nav-account .scenza-account-button > svg:first-child { box-sizing: content-box; width: 20px; height: 20px; padding: 11px; border: 1px solid #2b4a50; border-radius: 50%; }
   .scenza-mobile-nav-account .scenza-account-chevron { display: block; color: #a7bcc1; }
-  .scenza-mobile-nav-account .scz-notify-bell { width: 48px; height: 48px; }
-  .scenza-mobile-nav-account .scz-notify-bell svg { width: 26px; height: 26px; }
+  .scenza-mobile-nav-account .scz-notify-bell { width: 44px; height: 44px; }
+  .scenza-mobile-nav-account .scz-notify-bell svg { width: 22px; height: 22px; }
 }
 @keyframes scenza-menu-fade { from { opacity: 0; } }
-@keyframes scenza-menu-drop { from { opacity: 0; transform: translateY(-10px) scale(.98); } }
+@keyframes scenza-menu-drop { from { opacity: 0; transform: translateY(-8px) scale(.96); } }
 @media (prefers-reduced-motion: reduce) { .scenza-mobile-menu, .scenza-mobile-nav { animation: none; } }
 .scenza-hero { position: relative; isolation: isolate; padding: 62px 0 0; overflow: hidden; }
 .scenza-hero::before { content: ''; position: absolute; inset: 0; z-index: -2; pointer-events: none; background: radial-gradient(ellipse at 73% 35%, #17403d77, transparent 57%), radial-gradient(ellipse at 74% 110%, #02090ccc, transparent 48%), linear-gradient(115deg, #061114, #081b1e 75%, #061316); }

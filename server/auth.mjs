@@ -282,23 +282,30 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
       const size = Number.isSafeInteger(limit) ? Math.min(50, Math.max(1, limit)) : 10;
       return { items: found.slice(start, start + size).map(publicUser), total: found.length };
     },
-    async registerTelegram(profile, accepted, eventKey) {
+    async registerTelegram(profile, accepted, eventKey, loginToken) {
       if (!botRegistrationEnabled) throw fail('Регистрация в боте пока недоступна.', 503);
       const id = telegramId(profile?.id);
       if (!id) throw fail('Некорректный Telegram ID.');
       if (accepted?.termsAccepted !== true || accepted?.dataConsent !== true) throw fail('Подтвердите условия и согласие на обработку данных отдельно.');
       if (!accounts.some(user => user.telegramUserId === id)) await requireMembership(id);
-      return botMutation(eventKey, 'register', id, (next, transaction) => {
+      const challenge = typeof loginToken === 'string' ? botChallenges.get(digest(loginToken)) : null;
+      const referrer = challenge && challenge.actor === id && challenge.expiresAt > now() ? challenge.referrer : null;
+      let created = null;
+      const result = await botMutation(eventKey, 'register', id, (next, transaction) => {
         const existing = next.find(user => user.telegramUserId === id);
         if (existing) return publicUser(existing);
         const user = account({ provider: 'telegram', telegramUserId: id, name: typeof profile.name === 'string' ? profile.name.trim().slice(0, 100) || 'Пользователь Telegram' : 'Пользователь Telegram', role: 'user', blocked: false }, { termsVersion: VERSION, dataConsentVersion: VERSION, acceptedAt: new Date(now()).toISOString(), source: 'telegram_bot' });
         if (typeof profile.username === 'string' && /^[A-Za-z0-9_]{1,32}$/.test(profile.username)) user.telegramUsername = profile.username;
         user.trialStartedAt = null;
         user.trialEndsAt = null;
+        if (referrer && next.some(item => item.id === referrer)) user.referredBy = referrer;
         next.push(user);
-        audit(transaction, 'register', id, user.id, { provider: 'telegram', source: 'bot' });
+        audit(transaction, 'register', id, user.id, { provider: 'telegram', source: 'bot', ...(user.referredBy ? { referredBy: user.referredBy } : {}) });
+        created = user;
         return publicUser(user);
       });
+      if (created?.referredBy) registered(created);
+      return result;
     },
     async logs({ userId, limit = 20 } = {}) {
       const id = userId ? findUser(accounts, userId).id : null;
@@ -454,7 +461,9 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
     if (previous) botChallenges.delete(digest(old));
     if (botChallenges.size >= 1000) throw fail('Сервис занят. Попробуйте позже.', 503);
     const token = secret(), browserToken = secret(), expiresAt = now() + 5 * 60000;
-    botChallenges.set(digest(token), { browserHash: digest(browserToken), expiresAt, remember: body.remember === true, verificationOnly, ...(verificationOnly ? { email: body.email.trim().toLowerCase() } : {}) });
+    // An invitation code is kept with the challenge, so a sign-up finished in the Telegram bot is still linked to the inviter.
+    const referrer = !verificationOnly && body.mode === 'register' ? referrerId(body.ref) : null;
+    botChallenges.set(digest(token), { browserHash: digest(browserToken), expiresAt, remember: body.remember === true, verificationOnly, ...(verificationOnly ? { email: body.email.trim().toLowerCase() } : {}), ...(referrer ? { referrer } : {}) });
     cookie(response, 'scena_telegram_bot', `${token}.${browserToken}`, 300);
     return { url: `https://t.me/${telegramBotUsername}?start=login_${token}`, expiresAt };
   }

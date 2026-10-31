@@ -125,3 +125,6 @@
 }
 .app-header .header-notify { margin-left: auto; }
 .app-header .header-notify ~ .avatar { margin-left: 0; }
+.admin-access-dialog > svg { color: var(--accent); }
+.admin-access-dialog h2 { margin-top: 14px; }
+.admin-access-dialog .button { width: 100%; min-height: 48px; }

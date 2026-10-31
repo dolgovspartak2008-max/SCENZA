@@ -117,3 +117,17 @@ test('smart framing without detected faces preserves source edges over a blurred
     assert.ok(cropMode === 'smart' ? green > red + 100 : red > green + 100, `${cropMode}: red=${red} green=${green}`);
   }
 });
+
+test('captions end at finished sentences, never overlap and keep a long word inside the frame', () => {
+  const words = [['Мы', 0, .3], ['победили.', .35, .9], ['Теперь', 1, 1.3], ['дальше', 1.35, 1.7]].map(([word, start, end]) => ({ word: ` ${word}`, start, end }));
+  const ass = buildSubtitles([{ start: 0, end: 1.8, text: 'Мы победили. Теперь дальше', words }], normalizeSettings({ start: 0, end: 10 }, 10), 1080, 1920);
+  const cues = ass.split('\n').filter(line => line.startsWith('Dialogue:')).map(line => line.split(',').slice(9).join(',').replace(/\{[^}]*\}/g, ''));
+  assert.deepEqual(cues, ['Мы победили.', 'Теперь дальше']);
+  const overlapping = buildSubtitles([{ start: 0, end: 2, text: 'Первая фраза', words: [{ start: 0, end: .8, word: 'Первая' }, { start: .8, end: 1.6, word: 'фраза' }] }, { start: 1.2, end: 3, text: 'фраза вторая', words: [{ start: 1.2, end: 1.6, word: 'фраза' }, { start: 2, end: 2.8, word: 'вторая' }] }], normalizeSettings({ start: 0, end: 10 }, 10), 1080, 1920);
+  const time = value => value.split(':').reduce((seconds, part) => seconds * 60 + Number(part), 0);
+  const spans = overlapping.split('\n').filter(line => line.startsWith('Dialogue:')).map(line => line.split(','));
+  for (let i = 1; i < spans.length; i++) assert.ok(time(spans[i][1]) >= time(spans[i - 1][2]) - .001, 'captions never share the screen');
+  assert.equal(overlapping.split('фраза').length - 1, 1, 'a word repeated at a segment border is shown once');
+  const long = buildSubtitles([{ start: 0, end: 2, text: 'Достопримечательностями', words: [{ start: 0, end: 2, word: 'Достопримечательностями' }] }], normalizeSettings({ start: 0, end: 5, subtitleSize: 96 }, 5), 1080, 1920);
+  assert.match(long, /\{\\fs\d+\}Достопримечательностями/);
+});

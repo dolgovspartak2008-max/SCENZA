@@ -425,6 +425,28 @@ test('referral link rewards both friends once, plan activation grants tokens and
   assert.deepEqual(grants.map(([owner, tokens, reason]) => [owner, tokens, reason]), [[friend.id, 170, 'purchase'], [inviter.id, 17, 'referral']]);
 });
 
+test('referral survives a sign-up finished in the Telegram bot and is rewarded once', async t => {
+  const referrals = [];
+  const f = await fixture(t, { telegramBotUsername: 'SCENZA_BOT', ownerTelegramIds: ['1'], botRegistrationEnabled: true, onRegister: async value => referrals.push(value) });
+  const inviter = await f.auth.bots.registerTelegram({ id: 42, name: 'Inviter' }, consent, 'register:42');
+  const code = (await f.auth.bots.user(inviter.id)).referralCode;
+  const start = await f.call('/telegram/bot/start', { mode: 'register', ref: code, ...consent });
+  const token = new URL(start.body.url).searchParams.get('start').slice(6);
+  assert.equal((await f.auth.bots.beginWebsiteLogin(token, 77)).registrationRequired, true);
+  const friend = await f.auth.bots.registerTelegram({ id: 77, name: 'Friend' }, consent, 'register:77', token);
+  await f.auth.bots.registerTelegram({ id: 77, name: 'Friend' }, consent, 'register:77', token);
+  await f.auth.bots.confirmWebsiteLogin(token, 77);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(referrals, [{ userId: friend.id, inviterId: inviter.id, bonus: 20 }]);
+  assert.equal((await f.auth.bots.user(inviter.id)).referrals, 1);
+  // A login challenge from someone else, or no code at all, never links an account to an inviter.
+  const plain = await f.call('/telegram/bot/start', { mode: 'register', ...consent });
+  const other = new URL(plain.body.url).searchParams.get('start').slice(6);
+  await f.auth.bots.beginWebsiteLogin(other, 78);
+  await f.auth.bots.registerTelegram({ id: 78, name: 'Solo' }, consent, 'register:78', other);
+  assert.equal(referrals.length, 1);
+});
+
 test('signed-in users redeem access promo codes on the website', async t => {
   const f = await fixture(t, { ownerTelegramIds: ['1'] });
   assert.equal((await f.call('/promo', { code: 'WELCOME' })).status, 401);

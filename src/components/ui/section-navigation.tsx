@@ -190,8 +190,5 @@ export function SectionNavigation({ language, disabled = false }: { language: La
         </a>
       </li>)}</ol>
     </nav>
-    <div className="scenza-section-indicator" aria-label={`${sections[active]?.label ?? ''}, ${number(active)} / ${number(sections.length - 1)}`}>
-      <span>{number(active)}</span><span aria-hidden="true">/</span><span>{number(sections.length - 1)}</span>
-    </div>
   </>;
 }
