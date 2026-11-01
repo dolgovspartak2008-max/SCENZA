@@ -40,6 +40,7 @@ export function templateSettings(input) {
   return { settings, skipped };
 }
 const MAX_TEMPLATES = 20;
+export const MAX_AI_EDITS_PER_MONTH = 30;
 const projectView = ({analysis,analysisWindows,analysisResult,analysisCache,sourceFingerprint,editCache,adPreviewJobId,...project}) => project;
 const readyClips = project => [...(project.exports ?? (project.finalFile ? [{ id: project.finalFile }] : [])), ...(project.candidates || []).filter(candidate => candidate.ready).map(candidate => ({...candidate,format:candidate.settings?.format||'9:16'}))];
 const busyStates = ['PREPROCESSING','TRANSCRIBING','ANALYZING','RENDERING','EXPORTING'];
@@ -171,7 +172,7 @@ export async function createVideoApi({ dataDir, env = process.env }) {
       if (route === '/api/video/usage' && method === 'GET') {
         const { month, sourceMinutes, sourceCount, editRequests } = await store.ownerMonthlyUsage(ownerId);
         const ledger = ownerId === LOCAL_OWNER ? null : await tokens.summary(ownerId);
-        send(response, { month, sourceMinutes, sourceCount, editRequests, ...(ledger ? { tokens: ledger.balance, tokenHistory: ledger.history, publicationBonus: ledger.publicationBonus } : {}) }); return true;
+        send(response, { month, sourceMinutes, sourceCount, editRequests, ...(ownerId === LOCAL_OWNER ? {} : { editLimit: MAX_AI_EDITS_PER_MONTH }), ...(ledger ? { tokens: ledger.balance, tokenHistory: ledger.history, publicationBonus: ledger.publicationBonus } : {}) }); return true;
       }
       if (route === '/api/video/bonus/publication' && method === 'POST') {
         if (!(await store.listProjects(ownerId)).some(project => readyClips(project).length)) throw fail('Сначала подготовьте и опубликуйте ролик из SCENZA.', 409);
@@ -211,14 +212,9 @@ export async function createVideoApi({ dataDir, env = process.env }) {
         send(response, { template: saved.result, ...saved.list }); return true;
       }
       if (route === '/api/video/projects' && method === 'GET') { const projects = await store.listProjects(ownerId), numbers = projectNumbers(projects); send(response, { projects: projects.map(project => ({ ...projectView(project), title: projectTitle(numbers.get(project.id) || 1) })) }); return true; }
-      if (route === '/api/video/import' && method === 'POST') {
-        const body = await json(request);
-        if (typeof body.url !== 'string' || body.url.length > 4000) throw fail('Введите прямую ссылку на видео.');
-        const { publicUrl } = await import('../index.mjs'); await publicUrl(body.url);
-        const template = await chosenTemplate(ownerId, body.templateId);
-        const number = await nextNumber(ownerId), project = { id:randomUUID(), number, title:projectTitle(number), sourceUrl:body.url, createdAt:new Date().toISOString(), status:'UPLOADING', upload:{name:'Видео по ссылке',size:0,bytes:0},files:{},candidates:[],versions:[],music:[],retention:'keep-original',...(template?{template}:{}) };
-        await store.saveProject(ownerId,project); const job = await queue(ownerId,project,'preprocess'); send(response,{project:await view(ownerId,project),job},202);return true;
-      }
+      // Import by link was removed from the studio: it only took direct file links and opened the server to arbitrary downloads.
+      // Import by link was removed from the studio: it only took direct file links and opened the server to arbitrary downloads.
+      if (route === '/api/video/import' && method === 'POST') throw fail('Загрузка по ссылке отключена. Загрузите видео с устройства.', 410);
       if (route === '/api/video/projects' && method === 'POST') {
         const body = await json(request);
         if (typeof body.name !== 'string' || !SOURCE_NAME.test(body.name) || !Number.isSafeInteger(body.size) || body.size < 1 || body.size > MAX_FILE) throw sourceError();
@@ -278,6 +274,8 @@ export async function createVideoApi({ dataDir, env = process.env }) {
         if (action === 'export' && !['APPROVED','ADDING_AD','COMPLETED'].includes(project.status)) throw fail('Сначала подтвердите ролик.',409);
         if (action === 'ad-preview' && (!project.ad || !['APPROVED','ADDING_AD','COMPLETED'].includes(project.status))) throw fail('Подтвердите ролик и загрузите рекламу.',409);
         if (action === 'revise' && (typeof body.request !== 'string' || !body.request.trim() || body.request.length>2000)) throw fail('Опишите правку, до 2000 символов.');
+        // Every AI edit is a paid model call; a monthly cap per account keeps one user from loading the AI without limit.
+        if (action === 'revise' && ownerId !== LOCAL_OWNER && (await store.ownerMonthlyUsage(ownerId)).editRequests >= MAX_AI_EDITS_PER_MONTH) throw fail(`Лимит AI-правок на этот месяц исчерпан (${MAX_AI_EDITS_PER_MONTH}). Всё во вкладках можно изменить вручную бесплатно.`, 429);
         const candidate = project.candidates.find(item => item.id === body.sceneId);
         if (action === 'preview' && !candidate && !project.settings) throw fail('Выберите найденный момент.');
         const approved = project.versions.find(item => item.id === project.approvedVersion);

@@ -136,8 +136,38 @@
 @media(max-width:760px){.ai-banner-layout{grid-template-columns:1fr}.ai-banner-preview-column{position:static;max-width:320px;width:100%;justify-self:center}.ai-banner-empty{grid-template-columns:1fr}.ai-banner-pair{grid-template-columns:1fr}}
 @media(prefers-reduced-motion:reduce){.ai-banner-media{animation:none}}
 .ai-result-frame{position:relative;justify-self:center;aspect-ratio:9/16;height:min(70vh,960px);max-width:100%;background:#000}.ai-result-frame .ai-result{display:block;width:100%;height:100%;max-width:none;max-height:none}
-.safe-zones{position:absolute;inset:0;pointer-events:none;z-index:2}.safe-zones span{position:absolute;display:flex;align-items:center;justify-content:center;padding:2px;background:repeating-linear-gradient(135deg,#ff5a5f33 0 6px,#ff5a5f1a 6px 12px);border:1px dashed #ff8a8acc;color:#ffe3e3;font-size:10px;line-height:1.2;text-align:center;text-shadow:0 1px 2px #000;overflow:hidden}
-.safe-zone-picker{display:flex!important;flex-direction:row;align-items:center;gap:10px;justify-self:center;font-size:13px}.safe-zone-picker select{width:auto!important;min-height:36px;padding:6px 10px!important}.ai-banner-warning{color:#ffb4a8}
+.safe-zones{position:absolute;inset:0;z-index:2;pointer-events:none;container-type:inline-size;color:#fff;font-family:system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;filter:drop-shadow(0 1px 1.5px #0009)}
+.safe-zones svg{width:7.4cqw;height:7.4cqw;stroke-width:1.9}
+.safe-zones .sz-filled{fill:#fff}
+.sz-shade{position:absolute;left:0;right:0;filter:none}.sz-shade-top{top:0;height:16%;background:linear-gradient(#0000008c,#0000)}.sz-shade-bottom{bottom:0;height:34%;background:linear-gradient(#0000,#000000a6)}
+.sz-line{display:block;height:2.1cqw;border-radius:99px;background:#ffffffd9}
+.sz-top{position:absolute;left:4.5cqw;right:4.5cqw;top:3.4%;display:flex;align-items:center;justify-content:space-between;gap:3cqw}
+.sz-tabs{display:flex;gap:4.5cqw;font-size:4.4cqw}.sz-tabs b{font-weight:600;opacity:.65}.sz-tabs b.is-active{opacity:1;padding-bottom:1.2cqw;border-bottom:.6cqw solid #fff}
+.sz-title{font-size:6cqw;font-weight:700}.sz-spacer{flex:1}
+.sz-side{position:absolute;right:2.4cqw;bottom:21%;display:flex;flex-direction:column;align-items:center;gap:4.6cqw;width:13cqw}
+.sz-action{display:flex;flex-direction:column;align-items:center;gap:1.4cqw;width:100%}.sz-action svg{width:8.6cqw;height:8.6cqw}.sz-action .sz-line{height:1.8cqw}
+.sz-avatar{position:relative;display:grid;place-items:center;width:11cqw;height:11cqw;border:.5cqw solid #fff;border-radius:50%;background:#5d6b74}.sz-avatar svg{width:7cqw;height:7cqw;stroke:#cfd8dc}
+.sz-avatar em{position:absolute;bottom:-2.4cqw;display:grid;place-items:center;width:5cqw;height:5cqw;border-radius:50%;background:#fe2c55}.sz-avatar em svg{width:3.6cqw;height:3.6cqw;stroke:#fff;stroke-width:3}
+.sz-avatar.sz-small{width:8cqw;height:8cqw;border-width:0;flex:none}.sz-avatar.sz-small svg{width:5cqw;height:5cqw}
+.sz-avatar.sz-ring{box-shadow:0 0 0 .5cqw #0b0b0b,0 0 0 1cqw #e1306c}
+.sz-disc{display:grid;place-items:center;width:10cqw;height:10cqw;border-radius:50%;background:radial-gradient(circle,#555 0 30%,#1d1d1d 31% 100%);border:1.4cqw solid #2a2a2a}.sz-disc svg{width:4.6cqw;height:4.6cqw}
+.sz-disc.sz-square{border-radius:2.4cqw;border:.6cqw solid #fff;background:#5d6b74}
+.sz-bottom{position:absolute;left:4cqw;right:19cqw;bottom:9.5%;display:grid;gap:2.2cqw}
+.sz-channel{display:flex;align-items:center;gap:2.6cqw}.sz-channel .sz-line{flex:none}
+.sz-pill{flex:none;padding:1.4cqw 3.2cqw;border-radius:99px;background:#fff;color:#0f0f0f;font-size:3.4cqw;font-weight:700;line-height:1.2}.sz-pill.sz-outline{background:none;color:#fff;border:.4cqw solid #ffffffd9;font-weight:600}
+.sz-music{display:flex;align-items:center;gap:1.6cqw}.sz-music svg{width:4.2cqw;height:4.2cqw}
+.sz-nav{position:absolute;left:0;right:0;bottom:0;height:7.6%;display:flex;align-items:center;justify-content:space-around;padding:0 2cqw;background:#000000b8;filter:none}.sz-nav svg{width:6.8cqw;height:6.8cqw}
+.sz-create{display:grid;place-items:center;width:11cqw;height:7.2cqw;border-radius:2cqw;background:#fff;box-shadow:-.9cqw 0 #25f4ee,.9cqw 0 #fe2c55}.sz-create svg{stroke:#000;stroke-width:2.6;width:5cqw;height:5cqw}
+.sz-create.sz-circle{width:9cqw;height:9cqw;border-radius:50%;background:none;border:.5cqw solid #fff;box-shadow:none}.sz-create.sz-circle svg{stroke:#fff}
+.sz-shorts-logo{width:6cqw;height:7cqw;border-radius:2cqw 2cqw 2cqw 2cqw;background:#fff;transform:skewY(-12deg)}
+.sz-shorts .sz-side{bottom:19%}.sz-reels .sz-side{bottom:21%}.sz-reels .sz-bottom{bottom:9%}
+.safe-zone-picker{display:grid;justify-items:center;gap:8px;justify-self:center;font-size:13px;color:#a1b6c3}
+.safe-zone-picker>div{display:flex;flex-wrap:wrap;justify-content:center;gap:4px;padding:4px;border:1px solid #23404c;border-radius:999px;background:#0a1a21}
+.safe-zone-picker button{min-height:36px;padding:6px 16px;border:0;border-radius:999px;background:none;color:#cfe2e8;font:inherit;font-size:14px;cursor:pointer}
+.safe-zone-picker button:hover{color:#fff;background:#12303a}
+.safe-zone-picker button.is-active{background:#40dccc;color:#021c22;font-weight:700}
+.safe-zone-picker button:focus-visible{outline:2px solid #40dccc;outline-offset:2px}
+.ai-banner-warning{color:#ffb4a8}
 .ai-estimate{display:grid;gap:6px;width:100%;margin-top:6px;padding:12px 14px;border:1px solid #285844;border-radius:10px;background:#0d2a20;text-align:left}.ai-estimate strong{color:#84f5cd;font-size:15px}.ai-estimate span{color:#c0dbce;font-size:13px}.ai-estimate.is-short{border-color:#6b3a3a;background:#2a1717}.ai-estimate.is-short strong{color:#ffb4a8}.ai-estimate .ai-actions{justify-content:flex-start}
 .ai-bonus{display:grid;gap:6px;padding:14px 16px;border:1px solid #2c6a5c;border-radius:10px;background:linear-gradient(120deg,#0d2a24,#0b191f 70%)}.ai-bonus strong{color:#84f5cd;font-size:15px}.ai-bonus span{color:#c0dbce;font-size:13px}.ai-bonus-row{display:flex;gap:8px;flex-wrap:wrap}.ai-bonus-row input{flex:1 1 240px}
 .ai-subtitles{padding:22px;display:grid;gap:16px;min-width:0;border-radius:12px}
@@ -202,3 +232,29 @@
 .ai-template-list li>div:first-child{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.ai-template-list small{flex-basis:100%;color:#88a6b2}
 .ai-template-actions{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 @media(max-width:600px){.ai-tool-panel{padding:14px}.ai-tool-tabs{margin-inline:-4px;padding-inline:4px}.ai-apply-bar .ai-actions>.button,.ai-template-actions>.button{width:100%}}
+
+/* Clip card: two compact, evenly spaced buttons instead of two oversized pills pressed together. */
+.ai-candidate-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:16px}
+.ai-studio .ai-candidate-actions .button{flex:0 1 auto;min-height:40px;padding:8px 18px;gap:8px;font-size:14px;line-height:1.2}
+@media(max-width:420px){.ai-studio .ai-candidate-actions .button{flex:1 1 0;padding-inline:12px}}
+
+/* Tool tabs: no scrollbar drawn over the labels; a soft fade hints that the row scrolls. */
+.ai-tool-tabs{scrollbar-width:none;padding:2px 2px 6px;-webkit-mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 22px),transparent);mask-image:linear-gradient(90deg,transparent 0,#000 14px,#000 calc(100% - 22px),transparent);scroll-padding-inline:16px}
+.ai-tool-tabs::-webkit-scrollbar{display:none}
+.ai-tool-tabs button{scroll-snap-align:start}
+
+/* Rounder editor: fields, panels and players without sharp rectangles. */
+.studio-shell{--radius:18px}
+.ai-studio input:not([type=checkbox]):not([type=range]):not([type=color]),.ai-studio textarea{border-radius:14px}
+.ai-studio select{border-radius:999px;padding-inline:16px 34px;background-position:right 14px center}
+.ai-studio input[type=color]{border-radius:12px;padding:4px;min-height:40px}
+.ai-studio textarea{padding:14px 16px}
+.ai-studio .panel,.ai-tool-panel,.ai-capcut,.ai-bonus,.ai-estimate,.ai-limits,.ai-banner-stage{border-radius:18px}
+.ai-candidate{border-radius:20px}
+.ai-candidate video{border-radius:20px 20px 0 0}
+.ai-result,.ai-result-frame{border-radius:18px;overflow:hidden}
+.ai-studio .ai-project img,.ai-processing-detail img{border-radius:14px}
+.ai-studio .badge{border-radius:999px;padding-inline:12px}
+.ai-studio .ai-clip-kit summary{border-radius:12px}
+.studio-resume-note{margin:8px 0 0;text-align:center}
+.ai-banner-links{display:flex;flex-wrap:wrap;gap:6px 16px}

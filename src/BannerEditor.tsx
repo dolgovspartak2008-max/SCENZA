@@ -4,7 +4,7 @@ import { SafeZonePicker, SafeZones, coversInterface, platforms } from './SafeZon
 import type { Platform } from './SafeZones';
 
 export type Ad = {
-  fileId: string; kind?: 'image' | 'video'; mediaDuration?: number; position: string; width: number; height?: number; fill?: boolean;
+  fileId: string; kind?: 'image' | 'video'; mediaDuration?: number; hasAudio?: boolean; position: string; width: number; height?: number; fill?: boolean;
   fit?: 'contain' | 'cover' | 'stretch'; start: number; duration: number; opacity: number; offsetX?: number; offsetY?: number; fade?: number;
   background?: 'color' | 'blur'; backgroundColor?: string;
 };
@@ -62,12 +62,15 @@ export function bannerBox(ad: Ad, format: Format, natural: { width: number; heig
 type Props = {
   ad: Ad | null; savedAd: Ad | null; needsBuild?: boolean; setAd: (ad: Ad | null) => void; clip: number; format: Format; fileUrl: (id: string) => string; frameSource?: string;
   working: boolean; onUpload: (file: File) => void; onSave: (ad: Ad) => void; onRemove: () => void;
+  /** Draft mode: edits stay local and are applied with the editor's single "apply" button. */
+  deferred?: boolean;
 };
 
-export default function BannerEditor({ ad, savedAd, needsBuild = false, setAd, clip, format, fileUrl, frameSource, working, onUpload, onSave, onRemove }: Props) {
+export default function BannerEditor({ ad, savedAd, needsBuild = false, setAd, clip, format, fileUrl, frameSource, working, onUpload, onSave, onRemove, deferred = false }: Props) {
   const input = useRef<HTMLInputElement>(null), frame = useRef<HTMLCanvasElement>(null), probe = useRef<HTMLVideoElement>(null);
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
   const [replay, setReplay] = useState(0);
+  const [muted, setMuted] = useState(true);
   const [platform, setPlatform] = useState<Platform | ''>(format === '9:16' ? 'tiktok' : '');
   const changed = !!ad && !sameAd(ad, savedAd, clip);
   const insert = ad?.position === 'insert';
@@ -100,8 +103,9 @@ export default function BannerEditor({ ad, savedAd, needsBuild = false, setAd, c
 
   if (!ad) return <section className="ai-banner ai-banner-empty">
     <div><h3>Баннер в ролике</h3><p className="ai-note">Загрузите картинку или короткое видео — в середине ролика видео встанет на паузу, на экране будет только ваш баннер, затем ролик продолжится. Время, размер и положение вы настроите сами, без запросов к AI.</p></div>
+    {deferred && savedAd && <p className="ai-note" role="status">Баннер будет убран после нажатия «Применить к ролику». <button type="button" className="text-link" onClick={() => setAd(savedAd)}>Вернуть баннер</button></p>}
     <button type="button" className="button primary" disabled={working} onClick={() => input.current?.click()}>Добавить баннер</button>
-    <small>PNG, JPG, WEBP до 20 МБ или видео до 30 сек. / 100 МБ</small>{picker}
+    <small>PNG, JPG, WEBP до 20 МБ или видео до 30 сек. / 100 МБ. Видео-баннер добавляется вместе со своим звуком.</small>{picker}
   </section>;
 
   return <section className="ai-banner">
@@ -111,7 +115,7 @@ export default function BannerEditor({ ad, savedAd, needsBuild = false, setAd, c
         <div key={replay} className={`ai-banner-stage ${insert ? `is-insert is-${ad.background}` : ''} ${box?.strip ? 'is-strip' : ''}`} style={{ aspectRatio: aspect, ...(insert && ad.background !== 'blur' ? { background: ad.backgroundColor } : {}), '--banner-fade': `${ad.fade ?? 0}s` } as CSSProperties} aria-label="Живой предпросмотр баннера">
           {!(insert && ad.background !== 'blur') && <canvas ref={frame} className="ai-banner-frame" aria-hidden="true" />}
           {box && (ad.kind === 'video'
-            ? <video className="ai-banner-media" src={fileUrl(ad.fileId)} muted loop autoPlay playsInline onLoadedMetadata={event => setNatural({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight })} style={{ left: box.left, top: box.top, width: box.width, height: box.height, opacity: ad.opacity, objectFit: ad.fit === 'cover' ? 'cover' : 'fill' }} />
+            ? <video className="ai-banner-media" src={fileUrl(ad.fileId)} muted={muted} loop autoPlay playsInline onLoadedMetadata={event => setNatural({ width: event.currentTarget.videoWidth, height: event.currentTarget.videoHeight })} style={{ left: box.left, top: box.top, width: box.width, height: box.height, opacity: ad.opacity, objectFit: ad.fit === 'cover' ? 'cover' : 'fill' }} />
             : <img className="ai-banner-media" src={fileUrl(ad.fileId)} alt="Ваш баннер" onLoad={event => setNatural({ width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight })} style={{ left: box.left, top: box.top, width: box.width, height: box.height, opacity: ad.opacity, objectFit: ad.fit === 'cover' ? 'cover' : 'fill' }} />)}
           {insert && <span className="ai-banner-badge">Пауза · {ad.duration} сек.</span>}
           {format === '9:16' && <SafeZones platform={platform} />}
@@ -123,7 +127,8 @@ export default function BannerEditor({ ad, savedAd, needsBuild = false, setAd, c
           {segment && <span className={insert ? 'is-pause' : ''} style={{ left: `${segment.left}%`, width: `${Math.max(1.5, segment.width)}%` }} />}
         </div>
         <small className="ai-banner-times"><span>0:00</span><span>{insert ? `пауза с ${ad.start} сек.` : `с ${currentMode === 'final' ? round(Math.max(0, clip - ad.duration)) : ad.start} сек.`}</span><span>{round(total)} сек.</span></small>
-        <button type="button" className="text-link" onClick={() => setReplay(value => value + 1)}>Показать появление</button>
+        <span className="ai-banner-links"><button type="button" className="text-link" onClick={() => setReplay(value => value + 1)}>Показать появление</button>{ad.kind === 'video' && <button type="button" className="text-link" aria-pressed={!muted} onClick={() => setMuted(value => !value)}>{muted ? 'Послушать звук баннера' : 'Выключить звук'}</button>}</span>
+        {ad.kind === 'video' && <p className="ai-note">{ad.hasAudio ? 'Звук видео-баннера попадёт в ролик: на паузе звучит только баннер, поверх видео — вместе с речью.' : ad.hasAudio === false ? 'В этом видео нет звуковой дорожки — баннер будет без звука.' : 'Этот баннер загружен без звука. Нажмите «Заменить файл» и загрузите его снова — звук добавится в ролик.'}</p>}
       </div>
       <div className="ai-banner-controls">
         <fieldset className="ai-banner-modes"><legend>Как показывать</legend>
@@ -140,8 +145,10 @@ export default function BannerEditor({ ad, savedAd, needsBuild = false, setAd, c
         <label>Плавное появление и исчезание · {ad.fade ?? 0} сек.<input type="range" min={0} max={round(Math.min(2, ad.duration / 2))} step={.1} value={ad.fade ?? 0} onChange={event => update({ fade: Number(event.target.value) })} /></label>
         <div className="ai-banner-quick"><button type="button" className="button outline" onClick={() => update({ offsetX: 0, offsetY: 0 })}>По центру</button><button type="button" className="button outline" onClick={() => mode('insert')}>На весь экран</button>{savedAd && <button type="button" className="text-link" disabled={!changed} onClick={() => setAd(savedAd)}>Отменить изменения</button>}</div>
         {insert && <p className="ai-note">Ролик остановится на {ad.start} сек., {ad.duration} сек. будет виден только баннер, затем видео продолжится с того же места. Итоговая длина — {round(clip + ad.duration)} сек.</p>}
-        <button type="button" className="button primary" disabled={working || !(changed || needsBuild)} onClick={() => onSave(sanitizeAd(ad, clip))}>{changed ? 'Сохранить и собрать видео' : needsBuild ? 'Собрать видео с баннером' : 'Видео с баннером готово'}</button>
-        <p className="ai-note">Предпросмотр слева обновляется сразу. После сохранения ролик пересобирается с баннером и появляется в плеере выше — его можно посмотреть и скачать. Токены не списываются.</p>
+        {deferred
+          ? <p className="ai-note">Предпросмотр слева обновляется сразу. Чтобы собрать ролик с баннером, нажмите «Применить к ролику» внизу — вместе с остальными изменениями. Токены не списываются.</p>
+          : <><button type="button" className="button primary" disabled={working || !(changed || needsBuild)} onClick={() => onSave(sanitizeAd(ad, clip))}>{changed ? 'Сохранить и собрать видео' : needsBuild ? 'Собрать видео с баннером' : 'Видео с баннером готово'}</button>
+            <p className="ai-note">Предпросмотр слева обновляется сразу. После сохранения ролик пересобирается с баннером и появляется в плеере выше — его можно посмотреть и скачать. Токены не списываются.</p></>}
       </div>
     </div>
   </section>;

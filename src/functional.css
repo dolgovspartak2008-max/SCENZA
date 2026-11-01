@@ -128,3 +128,36 @@
 .admin-access-dialog > svg { color: var(--accent); }
 .admin-access-dialog h2 { margin-top: 14px; }
 .admin-access-dialog .button { width: 100%; min-height: 48px; }
+
+/* Header trail: a rounded "where am I" pill instead of the plain slash-separated breadcrumbs. */
+.app-trail { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.app-trail ol { display: flex; align-items: center; gap: 2px; min-width: 0; margin: 0; padding: 4px; list-style: none; border: 1px solid #1d3a45; border-radius: 999px; background: linear-gradient(180deg, #0b222b, #071820); box-shadow: inset 0 1px 0 #ffffff0d; }
+.app-trail li { display: flex; align-items: center; gap: 2px; min-width: 0; }
+.app-trail a, .trail-current { display: inline-flex; align-items: center; gap: 8px; min-height: 32px; padding: 0 12px; border-radius: 999px; font-size: .84rem; white-space: nowrap; }
+.app-trail a { color: #9fb9c4; }
+.app-trail a:hover { color: #fff; background: #12303a; }
+.app-trail a:focus-visible, .trail-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.trail-current { min-width: 0; color: #eaf6f8; font-weight: 700; background: #133540; }
+.trail-current span { overflow: hidden; text-overflow: ellipsis; }
+.trail-current svg, .app-trail a svg { flex: none; color: #40dccc; }
+.trail-separator { flex: none; color: #4f6f7b; }
+.trail-back { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border: 1px solid #1d3a45; border-radius: 50%; background: #0a1d24; color: #dff3f6; cursor: pointer; }
+.trail-back:hover { border-color: #40dccc; color: #40dccc; }
+@media (max-width: 650px) {
+  .app-trail li:not(.trail-current) { display: none; }
+  .app-trail ol { padding: 3px; }
+  .app-trail a, .trail-current { min-height: 30px; padding: 0 10px; font-size: .8rem; }
+  .trail-back { width: 36px; height: 36px; }
+}
+
+/* One section for projects and finished clips. */
+.ai-view-switch { display: flex; gap: 4px; justify-self: start; max-width: 100%; padding: 4px; overflow-x: auto; scrollbar-width: none; border: 1px solid #23404c; border-radius: 999px; background: #0a1a21; }
+.ai-view-switch::-webkit-scrollbar { display: none; }
+.ai-view-switch button { flex: none; min-height: 38px; padding: 6px 18px; border: 0; border-radius: 999px; background: none; color: #cfe2e8; font: inherit; font-size: .9rem; cursor: pointer; white-space: nowrap; }
+.ai-view-switch button:hover { color: #fff; background: #12303a; }
+.ai-view-switch button.is-active { background: #40dccc; color: #021c22; font-weight: 700; }
+.ai-view-switch button:focus-visible { outline: 2px solid #40dccc; outline-offset: 2px; }
+.library-heading-embedded { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.library-heading-embedded p { margin: 0; color: #a1b6c3; }
+.studio-shell .clip-card { border-radius: 20px; overflow: hidden; }
+.studio-shell .nav-item { border-radius: 12px; }

@@ -1,5 +1,5 @@
-import { Fragment, lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { MessageCircle, UserRound } from 'lucide-react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
+import { ArrowLeft, ChevronRight, MessageCircle, UserRound } from 'lucide-react';
 import { Icon, Logo } from './Icon';
 import type { IconName } from './Icon';
 import type { Project } from './model';
@@ -11,7 +11,6 @@ import type { ProfileTab } from './Profile';
 import './functional.css';
 
 const Editor = lazy(() => import('./Editor'));
-const Clips = lazy(() => import('./Library').then(module => ({ default: module.Clips })));
 const Publications = lazy(() => import('./Library').then(module => ({ default: module.Publications })));
 const Settings = lazy(() => import('./Library').then(module => ({ default: module.Settings })));
 const Profile = lazy(() => import('./Profile'));
@@ -19,7 +18,6 @@ const Profile = lazy(() => import('./Profile'));
 const navItems: { title: string; icon: IconName; path: string }[] = [
   { title: 'Главная', icon: 'home', path: '/' },
   { title: 'Мои проекты', icon: 'folder', path: '/ai' },
-  { title: 'Готовые клипы', icon: 'clip', path: '/clips' },
   { title: 'Публикации', icon: 'send', path: '/publications' },
 ];
 export default function App() {
@@ -36,7 +34,9 @@ export default function App() {
   const drawer = useRef<HTMLElement>(null);
   const main = useRef<HTMLElement>(null);
   const currentPath = new URL(route, location.origin).pathname.replace(/^\/app(?=\/|$)/, '').replace(/\/$/, '') || '/';
-  const path = currentPath === '/library' ? '/ai' : currentPath === '/upload/manual' ? '/upload' : currentPath;
+  // Projects and finished clips live in one section now; old /clips links open its "clips" view.
+  const path = ['/library', '/clips'].includes(currentPath) ? '/ai' : currentPath === '/upload/manual' ? '/upload' : currentPath;
+  const listView = currentPath === '/clips' || new URL(route, location.origin).searchParams.get('view') === 'clips' ? 'clips' : 'projects';
   const project = items.find((item) => path.replace(/\/$/, '') === `/projects/${item.id}`);
   const isUpload = path === '/upload';
   const aiProjectId = /^\/ai\/([\w-]+)$/.exec(path)?.[1];
@@ -45,14 +45,11 @@ export default function App() {
   const isProfile = path === '/profile';
   const profileTab = (['referrals', 'notifications'].find(tab => new URL(route, location.origin).searchParams.get('tab') === tab) ?? 'overview') as ProfileTab;
   const needsLegacyProjects = path.startsWith('/projects/');
-  const activeNav = aiView || path.startsWith('/projects/') ? 'Мои проекты' : path === '/clips' ? 'Готовые клипы' : path === '/publications' ? 'Публикации' : isSettings ? 'Настройки' : isProfile ? 'Профиль' : 'Главная';
+  const activeNav = aiView || path.startsWith('/projects/') ? 'Мои проекты' : path === '/publications' ? 'Публикации' : isSettings ? 'Настройки' : isProfile ? 'Профиль' : 'Главная';
   const nestedPage = isUpload || !!aiProjectId || path.startsWith('/projects/');
-  const breadcrumbs = [
-    { title: 'Главная', href: '/' },
-    { title: 'Локальная студия', href: '/app' },
-    ...(nestedPage ? [{ title: 'Мои проекты', href: '/app/ai' }] : []),
-    ...(path !== '/' ? [{ title: isUpload ? 'Добавить видео' : project?.title ?? (aiProjectId ? 'Проект' : activeNav), href: `/app${path}` }] : []),
-  ];
+  // Header trail: the section with its icon, then the open project; "back" appears only inside a project.
+  const section = navItems.find(item => item.title === activeNav);
+  const pageTitle = isUpload ? 'Новый проект' : project?.title ?? (aiProjectId ? 'Проект' : activeNav);
   const refresh = useCallback(async () => {
     if (!needsLegacyProjects) return;
     try { const result = await request<{ projects: Project[] }>('/api/projects'); setItems(result.projects); setError(''); }
@@ -82,7 +79,7 @@ export default function App() {
   useEffect(() => { const sync = (event: Event) => setAvatar((event as CustomEvent<string | null>).detail); window.addEventListener('scenza:avatar', sync); return () => window.removeEventListener('scenza:avatar', sync); }, []);
   useEffect(() => {
     if (path === currentPath) return;
-    const next = `/app${path}`;
+    const next = `/app${path}${currentPath === '/clips' ? '?view=clips' : ''}`;
     history.replaceState(null, '', next);
     setRoute(next);
   }, [currentPath, path]);
@@ -114,13 +111,13 @@ export default function App() {
       <nav aria-label="Главная навигация">{navItems.map((item) => <a key={item.title} href={item.path === '/' ? '/app' : `/app${item.path}`} className={`nav-item ${activeNav === item.title ? 'active' : ''}`} aria-current={activeNav === item.title ? 'page' : undefined} title={item.title} onClick={(event) => { event.preventDefault(); navigate(item.path); }}><Icon name={item.icon} /><span>{item.title}</span></a>)}</nav>
       <div className="sidebar-bottom"><p className="sidebar-section">Аккаунт</p><a className={`nav-item ${isProfile ? 'active' : ''}`} href="/app/profile" title="Профиль" aria-current={isProfile ? 'page' : undefined} onClick={(event) => { event.preventDefault(); navigate('/profile'); }}><UserRound size={21} aria-hidden="true" /><span>Профиль</span></a><a className="nav-item" href="https://t.me/SCENZA_BOT" target="_blank" rel="noopener noreferrer"><Icon name="send" /><span>Telegram-бот</span></a><a className={`nav-item ${isSettings ? 'active' : ''}`} href="/app/settings" title="Настройки" onClick={(event) => { event.preventDefault(); navigate('/settings'); }}><Icon name="settings" /><span>Настройки</span></a></div>
     </aside>
-    <div className="workspace"><header className="app-header"><button ref={menuButton} className="icon-button mobile-menu" aria-label="Открыть меню" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><nav className="breadcrumbs" aria-label="Хлебные крошки">{breadcrumbs.map((crumb, index) => <Fragment key={crumb.href}>{index > 0 && <span className="crumb-separator" aria-hidden="true">/</span>}<a href={crumb.href} aria-current={index === breadcrumbs.length - 1 ? 'page' : undefined} title={crumb.title} onClick={(event) => { if (crumb.href === '/' || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return; event.preventDefault(); navigate(crumb.href); }}>{crumb.title}</a></Fragment>)}</nav><NotificationBell className="header-notify" onOpen={item => { if (item.action === 'support') setSupportOpen(true); else if (item.link) navigate(item.link.replace(/^\/app/, '') || '/'); }} /><button className="icon-button" title="Поддержка" aria-label="Поддержка" onClick={() => setSupportOpen(true)}><MessageCircle size={20} aria-hidden="true" /></button><button className="avatar" title="Открыть профиль" aria-label="Открыть профиль" onClick={() => navigate('/profile')}>{avatar ? <img src={avatar} alt="" onError={() => setAvatar(null)} /> : <UserRound size={18} aria-hidden="true" />}</button></header>
+    <div className="workspace"><header className="app-header"><button ref={menuButton} className="icon-button mobile-menu" aria-label="Открыть меню" aria-expanded={menuOpen} onClick={() => setMenuOpen(true)}><Icon name="menu" /></button><nav className="app-trail" aria-label="Где вы находитесь">{nestedPage && <button type="button" className="trail-back" aria-label="Назад к моим проектам" title="Назад к моим проектам" onClick={() => navigate('/ai')}><ArrowLeft size={18} aria-hidden="true" /></button>}<ol>{nestedPage && <li><a href="/app/ai" onClick={(event) => { if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return; event.preventDefault(); navigate('/ai'); }}><Icon name="folder" size={16} /><span>Мои проекты</span></a><ChevronRight className="trail-separator" size={15} aria-hidden="true" /></li>}<li aria-current="page" className="trail-current">{!nestedPage && (isProfile ? <UserRound size={16} aria-hidden="true" /> : <Icon name={isSettings ? 'settings' : section?.icon ?? 'home'} size={16} />)}<span title={pageTitle}>{pageTitle}</span></li></ol></nav><NotificationBell className="header-notify" onOpen={item => { if (item.action === 'support') setSupportOpen(true); else if (item.link) navigate(item.link.replace(/^\/app/, '') || '/'); }} /><button className="icon-button" title="Поддержка" aria-label="Поддержка" onClick={() => setSupportOpen(true)}><MessageCircle size={20} aria-hidden="true" /></button><button className="avatar" title="Открыть профиль" aria-label="Открыть профиль" onClick={() => navigate('/profile')}>{avatar ? <img src={avatar} alt="" onError={() => setAvatar(null)} /> : <UserRound size={18} aria-hidden="true" />}</button></header>
       <main id="main-content" ref={main} tabIndex={-1} className={`main-content ${project ? 'editor-page' : ''}`}>
         <Suspense fallback={<div className="loading-panel" role="status">Открываем раздел…</div>}>
-        {aiView && <AiStudio key={path} projectId={aiProjectId} list={path === '/ai'} navigate={navigate} notify={notify} />}
+        {aiView && <AiStudio key={path} projectId={aiProjectId} list={path === '/ai'} view={listView} navigate={navigate} notify={notify} />}
         {needsLegacyProjects && error && <div className="connection-error" role="alert"><Icon name="info" /><span>{error}</span><button className="button outline" onClick={() => void refresh()}>Повторить</button></div>}
         {path === '/' && <AiStudio key="home" navigate={navigate} notify={notify} />}
-        {!aiView && path !== '/' && (needsLegacyProjects && loading ? <div className="loading-panel" role="status">Открываем проект…</div> : project ? <Editor key={project.id} project={project} navigate={navigate} notify={notify} onProjectChange={() => void refresh()} /> : path === '/clips' ? <Clips navigate={navigate} notify={notify} /> : path === '/publications' ? <Publications navigate={navigate} notify={notify} /> : isSettings ? <Settings notify={notify} /> : isProfile ? <Profile tab={profileTab} navigate={navigate} notify={notify} /> : <div className="not-found"><Icon name="film" size={46} /><h1>Видео не найдено</h1><p>Откройте мои проекты или добавьте новый файл.</p><button className="button primary" onClick={() => navigate('/ai')}>Мои проекты</button></div>)}
+        {!aiView && path !== '/' && (needsLegacyProjects && loading ? <div className="loading-panel" role="status">Открываем проект…</div> : project ? <Editor key={project.id} project={project} navigate={navigate} notify={notify} onProjectChange={() => void refresh()} /> : path === '/publications' ? <Publications navigate={navigate} notify={notify} /> : isSettings ? <Settings notify={notify} /> : isProfile ? <Profile tab={profileTab} navigate={navigate} notify={notify} /> : <div className="not-found"><Icon name="film" size={46} /><h1>Видео не найдено</h1><p>Откройте мои проекты или добавьте новый файл.</p><button className="button primary" onClick={() => navigate('/ai')}>Мои проекты</button></div>)}
         </Suspense>
       </main>
     </div><div className={`toast ${toast ? 'visible' : ''}`} role="status" aria-live="polite">{toast && <><Icon name="info" /><span>{toast}</span><button className="icon-button" aria-label="Закрыть уведомление" onClick={() => setToast('')}><Icon name="close" size={18} /></button></>}</div>

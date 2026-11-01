@@ -131,13 +131,19 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
       aiAccess: owners.has(telegramId(user.telegramUserId)) || now() < extended };
   }
 
+  // One Telegram account = one SCENZA account. Accounts that were linked to an already used Telegram earlier
+  // (before this rule) can no longer sign in, so a second email cannot be used to collect free tokens again.
+  const telegramOwner = (list, tg) => { const id = telegramId(tg); return id ? list.find(item => telegramId(item.telegramUserId) === id) || null : null; };
+  const duplicateTelegram = (list, user) => { const first = telegramOwner(list, user.telegramUserId); return !!first && first.id !== user.id; };
+  const TELEGRAM_TAKEN = 'Этот Telegram уже привязан к другому аккаунту SCENZA. Один Telegram — один аккаунт и один email: войдите в существующий аккаунт.';
+
   function session(request) {
     const token = cookies(request).scena_session;
     const tokenHash = token && digest(token);
     const stored = tokenHash && state.sessions.find(item => item.tokenHash === tokenHash);
     if (!stored || stored.expiresAt <= now()) return null;
     const user = accounts.find(account => account.id === stored.userId);
-    return user ? publicUser(user) : null;
+    return user && !duplicateTelegram(accounts, user) ? publicUser(user) : null;
   }
 
   function cookie(response, name, value, seconds) {
@@ -152,6 +158,7 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
     user = await mutate((next, transaction) => {
       const current = next.find(item => item.id === user.id);
       if (!current) throw fail('Аккаунт не найден.', 404);
+      if (duplicateTelegram(next, current)) throw fail(TELEGRAM_TAKEN, 409);
       if (expectedPasswordHash !== undefined && current.password?.hash !== expectedPasswordHash) throw fail('Неверный email или пароль.', 401);
       if (current.trialStartedAt === null) {
         if (!legalReady) throw fail('Вход откроется после подготовки сайта.', 503);
@@ -238,6 +245,7 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
       const challenge = botChallenge(token, id);
       if (challenge.userId) throw fail('Вход уже подтверждён. Вернитесь во вкладку сайта.', 409);
       const user = accounts.find(item => item.telegramUserId === telegramId(id));
+      if (challenge.verificationOnly && user?.email && user.email !== challenge.email) throw fail(TELEGRAM_TAKEN, 409);
       if (!user && !challenge.verificationOnly && !botRegistrationEnabled) throw fail('Регистрация в боте пока недоступна.', 503);
       challenge.actor = telegramId(id);
       return { registrationRequired: !user && !challenge.verificationOnly, verificationOnly: challenge.verificationOnly === true, ...(challenge.verificationOnly ? { email: challenge.email } : {}), expiresAt: challenge.expiresAt };
@@ -246,6 +254,8 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
       const challenge = botChallenge(token, id);
       if (!challenge.actor || challenge.userId) throw fail('Ссылка входа недействительна или уже использована.', 410);
       if (challenge.verificationOnly) {
+        const owner = telegramOwner(accounts, challenge.actor);
+        if (owner?.email && owner.email !== challenge.email) throw fail(TELEGRAM_TAKEN, 409);
         await requireMembership(challenge.actor);
         if (challenge.expiresAt <= now() || botChallenges.get(digest(token)) !== challenge) throw fail('Ссылка подтверждения истекла.', 410);
         challenge.confirmed = true;
@@ -529,8 +539,9 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
       if (pending.purpose === 'register') {
         if (!legalReady) throw fail('Регистрация временно недоступна.', 503);
         if (next.some(item => item.email === pending.email)) throw fail('Адрес уже зарегистрирован. Войдите в аккаунт.', 409);
-        const linked = next.find(item => item.telegramUserId === pending.telegramUserId);
-        if (linked?.email && linked.email !== pending.email) throw fail('Этот Telegram уже связан с другим адресом. Войдите в существующий аккаунт.', 409);
+        const linked = telegramOwner(next, pending.telegramUserId);
+        if (!linked && !telegramId(pending.telegramUserId)) throw fail('Подтвердите Telegram в этой вкладке заново.', 403);
+        if (linked?.email && linked.email !== pending.email) throw fail(TELEGRAM_TAKEN, 409);
         if (linked) {
           Object.assign(linked, { email: pending.email, password: pending.password, emailVerifiedAt: new Date(now()).toISOString() });
           audit(transaction, 'account.email_link', linked.id, linked.id);

@@ -186,3 +186,21 @@ test('Telegram email proof names the destination and cannot be reused for anothe
   assert.equal(changed.body.telegramRequired, true);
   assert.equal(f.mail.length, 0);
 });
+test('one Telegram account can be linked to only one email', async t => {
+  const f = await fixture(t, { telegramMembership: async () => true });
+  const register = async email => {
+    const input = { mode: 'register', name: 'User', email, password: 'password123', ...accepted };
+    const start = await f.call('email/start', input);
+    const token = new URL(start.body.url).searchParams.get('start').slice(6);
+    return { input, token };
+  };
+  const first = await register('first@example.com');
+  await f.auth.bots.beginWebsiteLogin(first.token, 42); await f.auth.bots.confirmWebsiteLogin(first.token, 42);
+  const email = await f.call('email/start', first.input);
+  assert.equal((await f.call('email/verify', { challengeId: email.body.challengeId, code: f.mail.at(-1).code })).status, 200);
+  await f.call('logout', {});
+  const second = await register('second@example.com');
+  await assert.rejects(f.auth.bots.beginWebsiteLogin(second.token, 42), { status: 409 });
+  await assert.rejects(f.auth.bots.confirmWebsiteLogin(second.token, 42), { status: 410 });
+  assert.equal((await f.auth.bots.users()).total, 1);
+});

@@ -114,7 +114,7 @@ try {
           await page.getByLabel('Кадрирование').selectOption('manual');
           await page.getByLabel('Начало, сек.').fill('2');
           await page.getByLabel('Стиль субтитров').selectOption('Dynamic');
-          assert.equal(await page.getByRole('button', { name: 'Всё устраивает — подтвердить ролик' }).isDisabled(), true);
+          assert.equal(await page.getByRole('button', { name: 'Готово — ролик устраивает' }).isDisabled(), true);
           await page.getByRole('button', { name: 'Применить настройки', exact: true }).click();
           await page.waitForFunction(() => document.querySelector('.ai-review select')?.value === 'version-three');
           const preview = requests.findLast(r => r.action === 'preview');
@@ -147,7 +147,7 @@ try {
           await page.getByLabel('Новый формат', { exact: true }).selectOption('16:9');
           assert.equal(await page.getByRole('button', { name: 'Экспортировать MP4', exact: true }).isDisabled(), true);
           await page.getByRole('button', { name: 'Применить формат', exact: true }).click();
-          await page.getByRole('button', { name: 'Всё устраивает — подтвердить ролик' }).waitFor();
+          await page.getByRole('button', { name: 'Готово — ролик устраивает' }).waitFor();
           assert.equal(requests.findLast(r => r.action === 'preview').body.settings.format, '16:9');
           assert.equal(await page.locator('.ai-ad').count(), 0);
         }

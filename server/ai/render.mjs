@@ -344,6 +344,10 @@ export async function render({ input, output, settings, analysis = {}, ad, music
   const shiftX = ad?.offsetX ? `+W*${(ad.offsetX / 100).toFixed(4)}` : '', shiftY = ad?.offsetY ? `+H*${(ad.offsetY / 100).toFixed(4)}` : '';
   const fades = (from, length) => ad?.fade > 0 ? `,fade=t=in:st=${from}:d=${ad.fade}:alpha=1,fade=t=out:st=${Math.max(from, from + length - ad.fade)}:d=${ad.fade}:alpha=1` : '';
   let speech = 'speech';
+  const pcm = 'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo';
+  // A video banner keeps its own sound: alone during a pause insert, mixed with speech when it plays over the clip.
+  const adSound = Boolean(ad?.file && ad.kind === 'video' && ad.hasAudio === true);
+  let audible = voice;
   if (insert) {
     // Freeze the paused frame (blurred) behind the banner, then continue the clip from the same moment.
     const at = Math.min(ad.start, duration), gap = ad.duration, lead = at >= .05;
@@ -355,12 +359,14 @@ export async function render({ input, output, settings, analysis = {}, ad, music
     filters += `;[${adIndex}:v]setpts=PTS-STARTPTS,trim=duration=${gap},setpts=PTS-STARTPTS,${adBox},format=rgba,colorchannelmixer=aa=${ad.opacity}${fades(0, gap)}[insertad]`;
     filters += `;[freeze][insertad]overlay=(W-w)/2${shiftX}:(H-h)/2${shiftY}:eof_action=repeat,trim=duration=${gap},setsar=1[mid]`;
     filters += `;${lead ? '[pre]' : ''}[mid][post]concat=n=${lead ? 3 : 2}:v=1:a=0[inserted]`; video = 'inserted';
+    const gapSound = adSound ? `[${adIndex}:a]atrim=duration=${gap},asetpts=PTS-STARTPTS,${pcm},apad=whole_dur=${gap}` : `anullsrc=r=48000:cl=stereo,atrim=duration=${gap},${pcm}`;
     if (voice) {
-      const pcm = 'aformat=sample_fmts=fltp:sample_rates=48000:channel_layouts=stereo';
       filters += `;[speech]asplit=2[speechpre][speechpost]`;
       filters += lead ? `;[speechpre]atrim=end=${at},asetpts=PTS-STARTPTS,${pcm}[spre]` : ';[speechpre]anullsink';
-      filters += `;[speechpost]atrim=start=${at},asetpts=PTS-STARTPTS,${pcm}[spost];anullsrc=r=48000:cl=stereo,atrim=duration=${gap},${pcm}[sgap]`;
+      filters += `;[speechpost]atrim=start=${at},asetpts=PTS-STARTPTS,${pcm}[spost];${gapSound}[sgap]`;
       filters += `;${lead ? '[spre]' : ''}[sgap][spost]concat=n=${lead ? 3 : 2}:v=0:a=1[speechinserted]`; speech = 'speechinserted';
+    } else if (adSound) {
+      filters += `;${gapSound},adelay=${Math.round(at * 1000)}:all=1,apad=whole_dur=${total}[speechinserted]`; speech = 'speechinserted'; audible = true;
     }
   }
   if (ad?.file && !insert) {
@@ -368,15 +374,22 @@ export async function render({ input, output, settings, analysis = {}, ad, music
     const x = position?.endsWith('-left') ? 'W*0.02' : position?.endsWith('-right') ? 'W-w-W*0.02' : '(W-w)/2';
     const start = position === 'final' ? Math.max(0, duration-ad.duration) : ad.start;
     filters += `;[${adIndex}:v]setpts=PTS-STARTPTS+${start}/TB,${adBox},format=rgba,colorchannelmixer=aa=${ad.opacity}${fades(start, Math.min(duration, start + ad.duration) - start)}[ad];[${video}][ad]overlay=${x}${shiftX}:${y}${shiftY}:eof_action=pass:enable='gte(t,${start})*lt(t,${Math.min(duration,start+ad.duration)})'[advertised]`; video = 'advertised';
+    if (adSound) {
+      const length = Math.max(.1, Math.min(duration, start + ad.duration) - start);
+      filters += `;[${adIndex}:a]atrim=duration=${length},asetpts=PTS-STARTPTS,${pcm},adelay=${Math.round(start * 1000)}:all=1,apad=whole_dur=${duration}[adsound]`;
+      if (voice) filters += `;[${speech}]${pcm}[speechpcm];[speechpcm][adsound]amix=inputs=2:duration=first:normalize=0[speechad]`;
+      else filters += ';[adsound]anull[speechad]';
+      speech = 'speechad'; audible = true;
+    }
   }
   if (music) {
     filters += `;[${musicIndex}:a]atrim=duration=${total},asetpts=PTS-STARTPTS,volume=${settings.musicVolume}[music]`;
-    if (voice) filters += `;[${speech}]asplit[voice][duck];[music][duck]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=700[quiet];[voice][quiet]amix=inputs=2:duration=first:normalize=0[audio]`;
+    if (audible) filters += `;[${speech}]asplit[voice][duck];[music][duck]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=700[quiet];[voice][quiet]amix=inputs=2:duration=first:normalize=0[audio]`;
     else filters += ';[music]anull[audio]';
   }
   args.push('-filter_complex', filters, '-map', `[${video}]`);
   if (music) args.push('-map', '[audio]', '-c:a', 'aac', '-b:a', '192k');
-  else if (voice) args.push('-map', `[${speech}]`, '-c:a', 'aac', '-b:a', '192k');
+  else if (audible) args.push('-map', `[${speech}]`, '-c:a', 'aac', '-b:a', '192k');
   else args.push('-an');
   args.push('-t', String(total), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', preview ? '25' : '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', output);
   try { await ff(args, { cwd, duration: total, onProgress, signal }); }

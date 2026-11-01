@@ -181,7 +181,7 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
         const adMetadata=videoAd?await inspect(input):null;
         if(videoAd&&adMetadata.duration>30)throw fail('Рекламное видео должно быть не длиннее 30 секунд.',400);
         const output=path.join(folder,`${job.payload.assetId}.${videoAd?'mp4':isAd?'png':'m4a'}`);
-        await processVideo(['-protocol_whitelist','file,pipe','-format_whitelist',videoAd?'mov,matroska,webm':isAd?'image2,png_pipe,jpeg_pipe,webp_pipe':'mp3,wav,mov,ogg','-i',input,...(videoAd?['-map','0:v:0','-an','-vf',"scale='min(1280,iw)':-2",'-c:v','libx264','-preset','veryfast','-crf','23','-pix_fmt','yuv420p','-movflags','+faststart']:isAd?['-frames:v','1','-vf',"scale='min(1920,iw)':-2"]:['-vn','-t','600','-c:a','aac','-b:a','192k']),output]);
+        await processVideo(['-protocol_whitelist','file,pipe','-format_whitelist',videoAd?'mov,matroska,webm':isAd?'image2,png_pipe,jpeg_pipe,webp_pipe':'mp3,wav,mov,ogg','-i',input,...(videoAd?['-map','0:v:0','-map','0:a:0?','-vf',"scale='min(1280,iw)':-2",'-c:v','libx264','-preset','veryfast','-crf','23','-pix_fmt','yuv420p','-c:a','aac','-b:a','160k','-ac','2','-ar','48000','-movflags','+faststart']:isAd?['-frames:v','1','-vf',"scale='min(1920,iw)':-2"]:['-vn','-t','600','-c:a','aac','-b:a','192k']),output]);
         await put(job.payload.assetId,output,videoAd?'video/mp4':isAd?'image/png':'audio/mp4');
         if(isAd) {
           const clipSettings=project.settings||project.candidates[0]?.settings||normalizeSettings(project.candidates[0]||{},project.duration);
@@ -189,7 +189,7 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
           const previous=project.ad&&typeof project.ad==='object'?Object.fromEntries(['position','width','height','fit','start','duration','opacity','offsetX','offsetY','fade','background','backgroundColor'].filter(key=>project.ad[key]!==undefined).map(key=>[key,project.ad[key]])):null;
           const clipLength=timelineDuration(clipSettings),defaults={position:'insert',duration:videoAd?Math.min(30,Math.round(adMetadata.duration*10)/10):5};
           let placement;try{placement=normalizeAd(previous?{...previous,...(videoAd&&previous.position==='insert'?{duration:defaults.duration}:{})}:defaults,clipLength);}catch{placement=normalizeAd(defaults,clipLength);}
-          project.ad={...placement,fileId:job.payload.assetId,kind:videoAd?'video':'image',...(videoAd?{mediaDuration:adMetadata.duration}:{})};project.adPreview=null;
+          project.ad={...placement,fileId:job.payload.assetId,kind:videoAd?'video':'image',...(videoAd?{mediaDuration:adMetadata.duration,hasAudio:!!adMetadata.hasAudio}:{})};project.adPreview=null;
           await save();
           // Once a clip is being reviewed, the banner is previewed live in the browser; re-rendering every found moment would only waste time.
           if(!project.currentVersion){currentStage='Добавляем баннер в готовые ролики';await renderCandidates();}
