@@ -258,3 +258,36 @@
 .ai-studio .ai-clip-kit summary{border-radius:12px}
 .studio-resume-note{margin:8px 0 0;text-align:center}
 .ai-banner-links{display:flex;flex-wrap:wrap;gap:6px 16px}
+
+/* Editing layout: the video stays in sight while settings change, and one apply bar is always reachable. */
+.ai-review-body{display:grid;gap:20px;min-width:0}
+.ai-review-player{position:relative;display:grid;gap:12px;justify-items:center;min-width:0}
+.ai-review-tools{display:grid;gap:0;min-width:0;align-content:start}
+.ai-review-tools .ai-tool-tabs{margin-top:0}
+.ai-pin-toggle{font-size:13px;color:#8fb3bf}
+.ai-player-busy{position:absolute;top:12px;left:50%;z-index:6;display:flex;align-items:center;gap:10px;transform:translateX(-50%);padding:8px 16px;border:1px solid #2c6a5c;border-radius:999px;background:#071d24f2;color:#d9f7f1;font-size:13px;white-space:nowrap;box-shadow:0 8px 24px #0006}
+.ai-player-busy span{width:14px;height:14px;border:2px solid #40dccc55;border-top-color:#40dccc;border-radius:50%;animation:ai-spin .8s linear infinite}
+@keyframes ai-spin{to{transform:rotate(360deg)}}
+.ai-tool-tabs button{position:relative}
+.ai-tab-dot{position:absolute;top:6px;right:8px;width:8px;height:8px;border-radius:50%;background:#ffb547;box-shadow:0 0 0 2px #0c1820}
+.ai-tool-tabs button.is-active .ai-tab-dot{box-shadow:0 0 0 2px #40dccc}
+.ai-review-tools .ai-apply-bar{position:sticky;bottom:12px;z-index:5;margin-top:16px;padding:14px 16px;border:1px solid #23404c;border-radius:18px;background:#081a21f5;box-shadow:0 12px 32px #0008;backdrop-filter:blur(8px)}
+.ai-review-tools .ai-apply-bar.has-changes{border-color:#40dccc80}
+.ai-review-tools .ai-apply-bar.is-working{position:static;box-shadow:none}
+.ai-apply-bar b{color:#ffd28a;font-weight:700}
+@media(min-width:1000px){
+  .ai-review-body.is-editing{grid-template-columns:auto minmax(0,1fr);align-items:start;gap:28px}
+  .ai-review-body.is-editing .ai-review-player{position:sticky;top:16px}
+  .ai-review-body.is-editing .ai-result-frame{height:min(calc(100vh - 170px),720px)}
+  .ai-review-body.is-editing .ai-result{max-width:min(420px,40vw)}
+  .ai-review-body.is-editing.is-unpinned .ai-review-player{position:static}
+  .ai-pin-toggle{display:none}
+}
+@media(max-width:999px){
+  .ai-review-body.is-editing .ai-review-player{position:sticky;top:0;z-index:4;margin-inline:-16px;padding:8px 16px 10px;background:#06161ce8;backdrop-filter:blur(10px);border-bottom:1px solid #12303a}
+  .ai-review-body.is-editing .ai-result-frame{height:min(40svh,480px)}
+  .ai-review-body.is-editing .ai-review-player .safe-zone-picker>span{display:none}
+  .ai-review-body.is-editing.is-unpinned .ai-review-player{position:static;margin-inline:0;padding:0;background:none;border:0;backdrop-filter:none}
+  .ai-review-body.is-editing.is-unpinned .ai-result-frame{height:min(70vh,960px)}
+}
+@media(prefers-reduced-motion:reduce){.ai-player-busy span{animation:none}}

@@ -5,6 +5,7 @@ import './tailwind.css';
 import { authRequest } from './landing/auth';
 import type { Account } from './landing/auth';
 import './landing/auth-legal.css';
+import { ErrorBoundary, reloadForNewVersion } from './components/ui/error-boundary';
 
 const Studio = lazy(() => import('./App'));
 const Landing = lazy(() => import('./landing/Landing'));
@@ -35,4 +36,6 @@ function Site() {
   return <Suspense fallback={<div className="scenza-loading">SCENZA</div>}>{path.startsWith('/legal/') ? <LegalPage /> : path === '/' ? <Landing requestAccess={new URLSearchParams(location.search).has('account')} /> : path === '/app' || path.startsWith('/app/') || local ? <StudioAccess /> : <Landing requestAccess />}</Suspense>;
 }
 
-createRoot(document.getElementById('root')!).render(<StrictMode><Site /></StrictMode>);
+// Vite reports a code chunk that failed to load (usually an old page after a deploy); a fresh load fixes it.
+window.addEventListener('vite:preloadError', event => { if (reloadForNewVersion()) event.preventDefault(); });
+createRoot(document.getElementById('root')!).render(<StrictMode><ErrorBoundary><Site /></ErrorBoundary></StrictMode>);

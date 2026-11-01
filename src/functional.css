@@ -144,7 +144,8 @@
 .trail-back { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border: 1px solid #1d3a45; border-radius: 50%; background: #0a1d24; color: #dff3f6; cursor: pointer; }
 .trail-back:hover { border-color: #40dccc; color: #40dccc; }
 @media (max-width: 650px) {
-  .app-trail li:not(.trail-current) { display: none; }
+  .app-trail li:not(.trail-current):not(:first-child) { display: none; }
+  .trail-site span { display: none; }
   .app-trail ol { padding: 3px; }
   .app-trail a, .trail-current { min-height: 30px; padding: 0 10px; font-size: .8rem; }
   .trail-back { width: 36px; height: 36px; }
