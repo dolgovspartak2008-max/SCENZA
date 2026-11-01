@@ -32,15 +32,15 @@ export function createTokens(store) {
       const list = await entries(ownerId);
       return { balance: sum(list), publicationBonus: list.some(entry => entry.id === `publication-${ownerId}`), history: list.slice(-30).reverse().map(({ id, tokens, reason, note, createdAt, projectId }) => ({ id, tokens, reason, note, createdAt, projectId: projectId && projectId !== '-' ? projectId : null })) };
     },
-    // One bonus per account for the first published clip; the owner sees the link in the ledger note.
-    async publicationBonus(ownerId, link) {
+    // One bonus per account; granted only after the owner checked the post in the admin bot. Repeats change nothing.
+    async grantPublication(ownerId, link) {
       if (ownerId === LOCAL_OWNER) throw Object.assign(new Error('Бонус доступен в аккаунте SCENZA.'), { status: 403 });
       const url = publicationUrl(link);
-      if (!url) throw Object.assign(new Error('Вставьте ссылку на опубликованный ролик в TikTok, Instagram или YouTube.'), { status: 400 });
+      if (!url) throw Object.assign(new Error('Некорректная ссылка на публикацию.'), { status: 400 });
       const list = await entries(ownerId);
-      if (list.some(entry => entry.id === `publication-${ownerId}`)) throw Object.assign(new Error('Бонус за первую публикацию уже получен.'), { status: 409 });
+      if (list.some(entry => entry.id === `publication-${ownerId}`)) return { balance: sum(list), granted: false };
       await grant(ownerId, PUBLICATION_BONUS, 'bonus', `publication-${ownerId}`, url.slice(0, 120));
-      return { balance: sum(list) + PUBLICATION_BONUS };
+      return { balance: sum(list) + PUBLICATION_BONUS, granted: true };
     },
     // Charges once per project source; a retry or re-analysis of the same source is free.
     async charge(ownerId, projectId, sourceKey, seconds) {

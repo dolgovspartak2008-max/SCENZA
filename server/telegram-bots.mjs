@@ -112,7 +112,7 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
         if (delivered >= 10) break;
         if (!await service.panel.claimAlert(ownerId, alert.key, { cooldownMs: alert.cooldownMs })) continue;
         try {
-          const sent = await api('admin', 'sendMessage', { chat_id: ownerId, ...payload(alert.text, [[button('Панель SCENZA', 'adm:home')]]) });
+          const sent = await api('admin', 'sendMessage', { chat_id: ownerId, ...payload(alert.text, [...(alert.rows || []), [button('Панель SCENZA', 'adm:home')]]) });
           if (sent?.message_id) { keptMessages.add(`${ownerId}:${sent.message_id}`); if (keptMessages.size > 500) keptMessages.delete(keptMessages.values().next().value); }
           delivered++;
         }

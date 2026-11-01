@@ -26,11 +26,21 @@ type Version = { id:string; number:number; settings:Settings; createdAt:string; 
 type ExportedClip = { id:string; createdAt?:string; format?:Settings['format']; duration?:number };
 type VideoProject = { id:string; title:string; createdAt:string; status:string; duration?:number; phase?:Phase; phaseStartedAt?:string; hasAudio?:boolean; template?:{id:string;name:string}; upload:{name:string;size:number;bytes:number}; candidates:Candidate[]; versions:Version[]; exports?:ExportedClip[]; settings?:Settings; currentVersion?:string; approvedVersion?:string; finalFile?:string; files:Record<string,{key:string}>; jobId?:string; error?:string; ad?:Ad; adPreview?:string; capcutPacks?:Record<string,{fileId:string;createdAt:string}>; music:{id:string;name:string}[] };
 type Usage = { month:string; sourceMinutes:number; sourceCount:number; editRequests:number; editLimit?:number; tokens?:number; publicationBonus?:boolean };
+// The caption the owner looks for when checking a publication-bonus link in the admin bot.
+const madeWith=()=>`Видео сделано в SCENZA — ${location.host}`;
+type BonusState={status:'none'|'pending'|'approved'|'rejected';url?:string};
 function PublishBonus({notify,onDone}:{notify:Notify;onDone:()=>void}) {
-  const [url,setUrl]=useState(''),[sending,setSending]=useState(false);
-  return <form className="ai-bonus" onSubmit={event=>{event.preventDefault();setSending(true);void request(`${api}/bonus/publication`,{method:'POST',body:JSON.stringify({url:url.trim()})}).then(()=>{notify('+5 токенов начислено. Спасибо за публикацию!');setUrl('');onDone();},error=>notify(error instanceof Error?error.message:'Не удалось начислить бонус.')).finally(()=>setSending(false));}}>
-    <strong>Ролик готов! +5 токенов за публикацию</strong><span>Выложите этот ролик в TikTok, Reels или Shorts и вставьте ссылку на пост. Бонус начисляется один раз на аккаунт; ссылка сохраняется в истории токенов и видна администратору SCENZA.</span>
-    <div className="ai-bonus-row"><input type="url" required value={url} onChange={event=>setUrl(event.target.value)} placeholder="https://www.tiktok.com/@you/video/…" aria-label="Ссылка на опубликованный ролик"/><button className="button primary" disabled={sending||!url.trim()}>Получить бонус</button></div>
+  const [url,setUrl]=useState(''),[sending,setSending]=useState(false),[state,setState]=useState<BonusState|null>(null);
+  useEffect(()=>{void request<BonusState>('/api/account/publication-bonus').then(setState).catch(()=>setState({status:'none'}));},[]);
+  if(!state||state.status==='approved')return null;
+  if(state.status==='pending')return <div className="ai-bonus" role="status"><strong>Ссылка на проверке</strong><span>Мы проверим пост и начислим +5 токенов. Обычно это занимает до суток — бонус появится на балансе, а в Telegram придёт уведомление.</span></div>;
+  const caption=madeWith();
+  return <form className="ai-bonus" onSubmit={event=>{event.preventDefault();setSending(true);void request<BonusState>('/api/account/publication-bonus',{method:'POST',body:JSON.stringify({url:url.trim()})}).then(next=>{setState(next);notify('Ссылка отправлена на проверку. После проверки начислим +5 токенов.');setUrl('');onDone();},error=>notify(error instanceof Error?error.message:'Не удалось отправить ссылку.')).finally(()=>setSending(false));}}>
+    <strong>Ролик готов! +5 токенов за публикацию</strong>
+    <span>{state.status==='rejected'?'Прошлая ссылка не прошла проверку. ':''}Выложите ролик в TikTok, Reels или Shorts и добавьте в описание поста надпись:</span>
+    <div className="ai-bonus-caption"><code>{caption}</code><button type="button" className="button outline" onClick={()=>void navigator.clipboard.writeText(caption).then(()=>notify('Надпись скопирована.'),()=>notify('Не удалось скопировать — выделите надпись вручную.'))}>Скопировать</button></div>
+    <span>Затем вставьте ссылку на пост. Её проверит администратор SCENZA: ролик должен быть сделан у нас, а надпись — стоять в описании. Бонус начисляется один раз на аккаунт.</span>
+    <div className="ai-bonus-row"><input type="url" required value={url} onChange={event=>setUrl(event.target.value)} placeholder="https://www.tiktok.com/@you/video/…" aria-label="Ссылка на опубликованный ролик"/><button className="button primary" disabled={sending||!url.trim()}>Отправить на проверку</button></div>
   </form>;
 }
 const tokenWord=(count:number)=>count%10===1&&count%100!==11?'токен':[2,3,4].includes(count%10)&&![12,13,14].includes(count%100)?'токена':'токенов';
@@ -43,7 +53,7 @@ const videoDuration=(file:File)=>new Promise<number|null>(resolve=>{
 // Post text is assembled from the analysis the clip already has, so it costs no extra AI calls.
 const hashtag=(value:string)=>'#'+value.toLocaleLowerCase('ru-RU').replace(/[^\p{L}\p{N}]+/gu,'');
 const hashtags=(candidate:Candidate)=>[...new Set([...(candidate.keywords||[]),candidate.category].filter(Boolean).map(hashtag).filter(tag=>tag.length>2))].slice(0,4).concat(['#shorts','#reels','#tiktok']).join(' ');
-const postText=(candidate:Candidate)=>[candidate.hook||candidate.title,candidate.description,hashtags(candidate)].filter(Boolean).join('\n\n');
+const postText=(candidate:Candidate)=>[candidate.hook||candidate.title,candidate.description,madeWith(),hashtags(candidate)].filter(Boolean).join('\n\n');
 function ClipKit({project,candidate,notify,working,onCapcut}:{project:VideoProject;candidate?:Candidate;notify:Notify;working:boolean;onCapcut:(candidate?:string)=>void}) {
   const text=candidate?postText(candidate):'';
   const pack=project.capcutPacks?.[candidate?candidate.id:'current'];

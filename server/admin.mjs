@@ -2,6 +2,7 @@ import { promises as fs, constants } from 'node:fs';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { diagnose, jobAlertText } from './diagnosis.mjs';
+import { PUBLICATION_BONUS, publicationUrl } from './ai/tokens.mjs';
 
 const DAY = 86400000;
 const fail = (message, status = 400, code) => Object.assign(new Error(message), { status, ...(code ? { code } : {}) });
@@ -16,11 +17,11 @@ const fingerprint = value => createHash('sha256').update(value).digest('hex');
 export async function createAdminService({ auth, dataDir, getVideoApi, now = Date.now, env = process.env, fetch: fetcher = globalThis.fetch }) {
   await fs.mkdir(dataDir, { recursive: true });
   const file = path.join(dataDir, 'admin.json');
-  let state = { maintenance: { enabled: false, message: 'В SCENZA идут технические работы. Новые обработки временно недоступны. Попробуйте позже.' }, tickets: [], broadcasts: [], alerts: {}, events: [] };
+  let state = { maintenance: { enabled: false, message: 'В SCENZA идут технические работы. Новые обработки временно недоступны. Попробуйте позже.' }, tickets: [], publications: [], broadcasts: [], alerts: {}, events: [] };
   try {
     const saved = JSON.parse(await fs.readFile(file, 'utf8'));
     if (!saved || typeof saved.maintenance?.enabled !== 'boolean' || !Array.isArray(saved.tickets) || !Array.isArray(saved.broadcasts) || !Array.isArray(saved.events) || !saved.alerts || typeof saved.alerts !== 'object') throw new Error('Invalid admin store');
-    state = saved;
+    state = { ...saved, publications: Array.isArray(saved.publications) ? saved.publications : [] };
   } catch (error) { if (error.code !== 'ENOENT') throw error; }
   let writes = Promise.resolve();
   // One backend owns this small settings/support snapshot, like the account store.
@@ -203,6 +204,11 @@ export async function createAdminService({ auth, dataDir, getVideoApi, now = Dat
     async alerts(actor) {
       await owner(actor);
       const alerts = state.tickets.filter(ticket => ticket.status === 'new').map(ticket => ({ key: `support:${ticket.id}`, text: `Новое обращение SCENZA\n${ticket.name || ticket.userId}\n${ticket.text.slice(0, 2000)}\nID: ${ticket.id}`, cooldownMs: 365 * DAY }));
+      for (const item of state.publications.filter(entry => entry.status === 'pending')) alerts.push({
+        key: `publication:${item.id}`, cooldownMs: 365 * DAY,
+        text: `Заявка на бонус за публикацию (+${PUBLICATION_BONUS} токенов)\nПользователь: ${item.name || item.userId}${item.email ? `\nEmail: ${item.email}` : ''}${item.telegramUserId ? `\nTelegram ID: ${item.telegramUserId}` : ''}\nСсылка: ${item.url}\n\nОткройте пост и проверьте: ролик сделан в SCENZA и в описании есть надпись «Видео сделано в SCENZA».`,
+        rows: [[{ text: 'Открыть пост', url: item.url }], [{ text: `Начислить +${PUBLICATION_BONUS}`, callback_data: `adm:pub:ok:${item.id}` }, { text: 'Отклонить', callback_data: `adm:pub:no:${item.id}` }]],
+      });
       const key = await currentKey();
       if (key.keyStatus === 'limited' && key.keyRemaining <= key.keyLimit * 0.1) alerts.push({ key: 'ai:key:low', text: `SCENZA: осталось ${key.keyRemaining} USD из лимита текущего API-ключа ${key.keyLimit} USD. Это лимит ключа, а не общий баланс аккаунта OpenRouter. Проверьте лимиты и баланс в кабинете API.` });
       else if (key.keyStatus === 'payment_required') alerts.push({ key: 'ai:key:payment_required', text: 'SCENZA: OpenRouter вернул HTTP 402 при проверке ключа. Проверьте средства и лимиты в кабинете API.' });
@@ -224,6 +230,40 @@ export async function createAdminService({ auth, dataDir, getVideoApi, now = Dat
       const { events } = await accounts(actor), data = await video().catch(() => null);
       const failures = data ? data.jobs.filter(job => job.status === 'error' && job.stage !== 'cancelled').map(job => ({ type: 'job.error', at: job.updatedAt, userId: job.ownerId, detail: { jobId: job.id, error: job.error } })) : [{ type: 'database.error', at: timestamp(), message: 'База видеозадач недоступна. События аккаунтов доступны; ошибки генераций прочитать не удалось.' }];
       return [...events, ...state.events, ...failures].filter(item => (!userId || item.userId === userId) && (!errorsOnly || /error|fail|rejected|critical/.test(item.type || item.event || ''))).map(item => ({ ...item, event: item.event || item.type, message: item.message || item.detail?.error || item.detail?.reason || '' })).sort((a, b) => String(b.at || b.createdAt).localeCompare(String(a.at || a.createdAt))).slice(0, Math.min(50, Math.max(1, Number(limit) || 20)));
+    },
+    // Publication bonus: the client sends a link, the owner checks the post (and its "made in SCENZA" caption) in the admin bot.
+    async publicationStatus(userId) {
+      const item = state.publications.filter(entry => entry.userId === userId).at(-1);
+      return item ? { status: item.status, url: item.url, createdAt: item.createdAt } : { status: 'none' };
+    },
+    async requestPublicationBonus(userId, link) {
+      const url = publicationUrl(link);
+      if (!url) throw fail('Вставьте ссылку на опубликованный ролик в TikTok, Instagram или YouTube.');
+      const user = await auth.bots.user(userId);
+      const granted = (await (await getVideoApi()).tokens.summary(userId)).publicationBonus;
+      return mutate(next => {
+        const mine = next.publications.filter(entry => entry.userId === userId);
+        if (granted || mine.some(entry => entry.status === 'approved')) throw fail('Бонус за публикацию уже получен.', 409);
+        if (mine.some(entry => entry.status === 'pending')) throw fail('Ссылка уже на проверке. Мы сообщим, когда начислим бонус.', 409);
+        if (mine.length >= 5) throw fail('Слишком много заявок. Напишите в поддержку.', 429);
+        if (next.publications.some(entry => entry.url === url && entry.status !== 'rejected')) throw fail('Эта ссылка уже отправлена.', 409);
+        const item = { id: randomUUID(), userId, name: user.name || '', email: user.email || '', telegramUserId: user.telegramUserId || '', url, status: 'pending', createdAt: timestamp() };
+        next.publications.push(item); next.publications = next.publications.slice(-2000);
+        event(next, 'publication.request', { url }, userId);
+        return { status: item.status, url: item.url, createdAt: item.createdAt };
+      });
+    },
+    async reviewPublication(actor, id, approve) {
+      await owner(actor);
+      const item = state.publications.find(entry => entry.id === id);
+      if (!item) throw fail('Заявка не найдена.', 404);
+      if (item.status !== 'pending') return structuredClone(item);
+      if (approve) await (await getVideoApi()).tokens.grantPublication(item.userId, item.url);
+      return mutate(next => {
+        const entry = next.publications.find(value => value.id === id);
+        if (entry.status === 'pending') { entry.status = approve ? 'approved' : 'rejected'; entry.reviewedAt = timestamp(); event(next, approve ? 'publication.approved' : 'publication.rejected', { url: entry.url }, entry.userId); }
+        return entry;
+      });
     },
     async payments(actor) { await owner(actor); return { configured: false, items: [], message: 'Платёжная система пока не подключена. Истории транзакций и автоматической активации по оплате пока нет.' }; },
   };

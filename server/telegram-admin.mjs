@@ -195,6 +195,15 @@ export function createTelegramAdmin({ service, send, api, sendPhoto, complete, n
     } else if (section === 'tickettext') {
       const ticket = await panel.ticket(id, value);
       await reply(id, `Обращение ${ticket.id}\n\n${ticket.text}`, [[button('К обращению', `adm:ticket:${ticket.id}`)]]);
+    } else if (section === 'pub' && ['ok', 'no'].includes(value) && more) {
+      const item = await panel.reviewPublication(id, more, value === 'ok');
+      if (item.status === 'pending') { await reply(id, 'Заявка ещё не обработана. Повторите.'); return true; }
+      let delivered = false;
+      if (item.telegramUserId) {
+        const text = item.status === 'approved' ? 'SCENZA: спасибо за публикацию! +5 токенов начислено на баланс.' : 'SCENZA: заявка на бонус за публикацию отклонена. Проверьте, что ролик сделан в SCENZA и в описании есть надпись «Видео сделано в SCENZA», затем отправьте ссылку снова.';
+        try { await send('client', item.telegramUserId, text); delivered = true; } catch { /* The result is also shown in the studio. */ }
+      }
+      await reply(id, `Заявка ${item.status === 'approved' ? 'одобрена — токены начислены' : 'отклонена'}.\n${item.url}${delivered ? '\nПользователь уведомлён в Telegram.' : ''}`);
     } else if (section === 'reply') await ask(id, 'supportReply', 'Напишите ответ пользователю (до 3000 символов).', { ticketId: value });
     else if (section === 'close') { await panel.closeSupport(id, value); await reply(id, 'Обращение закрыто.'); }
     else if (section === 'journal' || section === 'errors') {

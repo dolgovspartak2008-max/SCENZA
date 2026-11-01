@@ -174,10 +174,8 @@ export async function createVideoApi({ dataDir, env = process.env }) {
         const ledger = ownerId === LOCAL_OWNER ? null : await tokens.summary(ownerId);
         send(response, { month, sourceMinutes, sourceCount, editRequests, ...(ownerId === LOCAL_OWNER ? {} : { editLimit: MAX_AI_EDITS_PER_MONTH }), ...(ledger ? { tokens: ledger.balance, tokenHistory: ledger.history, publicationBonus: ledger.publicationBonus } : {}) }); return true;
       }
-      if (route === '/api/video/bonus/publication' && method === 'POST') {
-        if (!(await store.listProjects(ownerId)).some(project => readyClips(project).length)) throw fail('Сначала подготовьте и опубликуйте ролик из SCENZA.', 409);
-        send(response, await tokens.publicationBonus(ownerId, (await json(request)).url)); return true;
-      }
+      // The bonus is no longer granted automatically: links go to the owner's admin bot (/api/account/publication-bonus).
+      if (route === '/api/video/bonus/publication') throw fail('Отправьте ссылку на проверку в студии.', 410);
       if (route === '/api/video/config' && method === 'GET') { send(response, { aiReady: !!env.OPENROUTER_API_KEY?.trim(), maxFileSize: MAX_FILE, chunkSize: CHUNK, limits: SOURCE_LIMITS }); return true; }
       if (route === '/api/video/estimate' && method === 'GET') {
         if (!estimates || estimates.until < Date.now()) estimates = { until: Date.now() + 5 * 60000, rates: estimateRates(await store.recentTimings(300).catch(() => [])) };

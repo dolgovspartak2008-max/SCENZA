@@ -291,3 +291,4 @@
   .ai-review-body.is-editing.is-unpinned .ai-result-frame{height:min(70vh,960px)}
 }
 @media(prefers-reduced-motion:reduce){.ai-player-busy span{animation:none}}
+.ai-bonus-caption{display:flex;flex-wrap:wrap;align-items:center;gap:8px}.ai-bonus-caption code{flex:1 1 220px;padding:10px 14px;border:1px dashed #2c6a5c;border-radius:12px;background:#071a17;color:#d6fff0;font-size:13px;overflow-wrap:anywhere}

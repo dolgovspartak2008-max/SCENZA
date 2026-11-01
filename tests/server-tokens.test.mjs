@@ -30,9 +30,9 @@ test('token ledger starts with trial tokens, charges each source once and refuse
   assert.equal(publicationUrl('http://tiktok.com/@a/video/1'), null, 'only https');
   assert.equal(publicationUrl('https://evil.example/tiktok.com'), null);
   assert.equal(publicationUrl('https://vm.tiktok.com/ZM123/'), 'https://vm.tiktok.com/ZM123/');
-  await assert.rejects(tokens.publicationBonus(owner, 'https://example.com/video'), error => error.status === 400);
-  assert.deepEqual(await tokens.publicationBonus(owner, 'https://www.youtube.com/shorts/abc123'), { balance: 179 });
-  await assert.rejects(tokens.publicationBonus(owner, 'https://www.instagram.com/reel/xyz/'), error => error.status === 409, 'the bonus is granted once');
+  await assert.rejects(tokens.grantPublication(owner, 'https://example.com/video'), error => error.status === 400);
+  assert.deepEqual(await tokens.grantPublication(owner, 'https://www.youtube.com/shorts/abc123'), { balance: 179, granted: true });
+  assert.equal((await tokens.grantPublication(owner, 'https://www.instagram.com/reel/xyz/')).granted, false, 'the bonus is granted once');
   assert.equal((await tokens.summary(owner)).publicationBonus, true);
 });
 

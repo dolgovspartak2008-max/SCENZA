@@ -462,6 +462,15 @@ export async function createServer({ dataDir = process.env.SCENA_DATA_DIR || pat
             const earned = tokens.filter(entry => entry.reason === 'referral' && entry.tokens > 0 && String(entry.id).endsWith('-inviter')).reduce((sum, entry) => sum + entry.tokens, 0);
             send({ ...auth.referrals(account.id), earned }); return;
           }
+          if (route === '/api/account/publication-bonus') {
+            if (method === 'GET') { send(await admin.publicationStatus(account.id)); return; }
+            if (method === 'POST') {
+              const projects = await (await getVideoApi()).store.listProjects(account.id);
+              if (!projects.some(project => project.finalFile || project.exports?.length || project.candidates?.some(candidate => candidate.ready))) throw fail('Сначала сделайте ролик в SCENZA и опубликуйте его.', 409);
+              send(await admin.requestPublicationBonus(account.id, (await jsonBody(request)).url), 201); return;
+            }
+            throw fail('Метод не поддерживается.', 405);
+          }
           if (route === '/api/support') {
             if (method === 'GET') { send({ tickets: await admin.userSupport(account.id) }); return; }
             if (method === 'POST') {
