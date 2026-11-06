@@ -177,7 +177,7 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
       const request = await service.beginWebsiteLogin(loginToken, id);
       const code = session({ actor: id, kind: 'websiteLogin', loginToken, verificationOnly: request.verificationOnly });
       const action = request.registrationRequired ? button('Зарегистрироваться и войти', `webregister:${code}`) : button(request.verificationOnly ? 'Проверить подписку и подтвердить' : 'Подтвердить вход', `weblogin:${code}`);
-      return send('client', id, `${request.verificationOnly ? `Подпишитесь на MediaFlowTech и подтвердите Telegram для регистрации по email ${clean(request.email)}. Затем вернитесь на сайт и подтвердите эту почту.` : request.registrationRequired ? 'Аккаунта ещё нет. Для регистрации нужна подписка на MediaFlowTech.' : 'Подтвердите вход в SCENZA с вашим Telegram-аккаунтом.'}\nПодтверждайте, только если вы сами начали вход на сайте. Не подтверждайте ссылки, присланные другими людьми. Ссылка действует 5 минут.`, [[{ text: 'Подписаться на MediaFlowTech', url: 'https://t.me/MediaFlowTech' }], [action], [button('Отмена', 'cancel')]]);
+      return send('client', id, `${request.verificationOnly ? `Подпишитесь на канал @SpartakWebDev и подтвердите Telegram для регистрации по email ${clean(request.email)}. Затем вернитесь на сайт и подтвердите эту почту.` : request.registrationRequired ? 'Аккаунта ещё нет. Для регистрации нужна подписка на канал @SpartakWebDev.' : 'Подтвердите вход в SCENZA с вашим Telegram-аккаунтом.'}\nПодтверждайте, только если вы сами начали вход на сайте. Не подтверждайте ссылки, присланные другими людьми. Ссылка действует 5 минут.`, [[{ text: 'Подписаться на @SpartakWebDev', url: 'https://t.me/SpartakWebDev' }], [action], [button('Отмена', 'cancel')]]);
     }
     if (data?.startsWith('weblogin:')) {
       const item = consume(data.slice(9), id, 'websiteLogin');
@@ -373,7 +373,7 @@ export function createTelegramBots({ clientToken, adminToken, service, siteUrl =
       } catch (error) {
         if (error.telegramFailure) throw error;
         const membership = /^(?:Для регистрации подпишитесь|Не удалось проверить подписку)/.test(error.message);
-        await send(type, person.id, error.status && error.status < 500 || membership ? error.message : 'Не удалось выполнить действие. Сервис временно недоступен. Попробуйте позже.', type === 'client' ? membership ? [[{ text: 'Подписаться на MediaFlowTech', url: 'https://t.me/MediaFlowTech' }]] : clientRows() : [[button('Главное меню', 'adm:home')]]);
+        await send(type, person.id, error.status && error.status < 500 || membership ? error.message : 'Не удалось выполнить действие. Сервис временно недоступен. Попробуйте позже.', type === 'client' ? membership ? [[{ text: 'Подписаться на @SpartakWebDev', url: 'https://t.me/SpartakWebDev' }]] : clientRows() : [[button('Главное меню', 'adm:home')]]);
       }
     } finally { editTarget = null; }
   }

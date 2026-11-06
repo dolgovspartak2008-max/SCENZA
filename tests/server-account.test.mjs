@@ -24,7 +24,7 @@ test('accounts isolate libraries and media; the free start does not expire by da
   }
   let telegramId = 4242;
   async function register(email) {
-    const input = { email, password: 'valid-password', mode: 'register', name: `Test ${email}`, termsAccepted: true, dataConsent: true, remember: true };
+    const input = { email, password: 'Valid-Pass-42', mode: 'register', name: `Test ${email}`, termsAccepted: true, dataConsent: true, remember: true };
     const proofResponse = await request('/api/auth/email/start', '', input);
     assert.equal(proofResponse.status, 200);
     const proof = await proofResponse.json();

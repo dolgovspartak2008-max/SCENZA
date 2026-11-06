@@ -16,13 +16,16 @@ test('plan restore validates both plan and interval', () => {
 });
 test('auth validates input and sends credentials only to the server', async (t) => {
   assert.deepEqual(validateAuth({ email: 'invalid', password: 'short' }), { email: 'invalidEmail', password: 'shortPassword' });
-  assert.deepEqual(validateAuth({ email: 'demo@example.com', password: 'demo-password' }), {});
+  assert.deepEqual(validateAuth({ email: 'demo@example.com', password: 'Demo-Pass-91' }), {});
+  assert.deepEqual(validateAuth({ email: 'demo@example.com', password: 'qwerty123', newPassword: true }), { password: 'weakPassword' });
+  assert.deepEqual(validateAuth({ email: 'demo@example.com', password: 'qwerty123' }), {});
+  assert.deepEqual(validateAuth({ email: 'demo@example.com', password: 'Kazan-Clip7', newPassword: true }), {});
   let sent;
   t.mock.method(globalThis, 'fetch', async (url, init) => {
     sent = { url, init };
     return new Response(JSON.stringify({ verificationRequired: true, challengeId: 'challenge' }));
   });
-  assert.deepEqual(await authAdapter.submit('register', { email: 'demo@example.com', password: 'demo-password' }), { verificationRequired: true, challengeId: 'challenge' });
+  assert.deepEqual(await authAdapter.submit('register', { email: 'demo@example.com', password: 'Demo-Pass-91' }), { verificationRequired: true, challengeId: 'challenge' });
   assert.equal(sent.url, '/api/auth/email/start');
   assert.equal(sent.init.credentials, 'same-origin');
   assert.equal(JSON.parse(sent.init.body).mode, 'register');

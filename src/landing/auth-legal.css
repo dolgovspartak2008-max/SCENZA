@@ -114,6 +114,16 @@
 .scenza-auth-note { margin: 0 0 4px; color: #93abb1; font-size: .86rem; line-height: 1.55; }
 .scenza-auth-note a, .scenza-auth-consents a { color: #6eeed6; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; }
 .scenza-auth-waiting { margin-top: 16px; }
+.scenza-channel-gate { margin-top: 18px; padding: 14px 16px; border: 1px solid #2d6f66; border-radius: 16px; background: #0b2422; color: #b9cdd1; font-size: .88rem; line-height: 1.5; }
+.scenza-channel-gate strong { display: block; color: #f4f9fa; font-size: .98rem; font-weight: 650; }
+.scenza-channel-gate ol { margin: 8px 0 12px; padding-left: 20px; }
+.scenza-channel-gate li + li { margin-top: 4px; }
+.scenza-auth-dialog .scenza-channel-button { width: 100%; min-height: 44px; gap: 8px; }
+.scenza-password-rules { display: grid; gap: 4px; margin: 10px 0 0; padding: 0; list-style: none; color: #7f979d; font-size: .82rem; }
+.scenza-password-rules li { display: flex; align-items: center; gap: 6px; }
+.scenza-password-rules svg { flex: none; opacity: .35; }
+.scenza-password-rules li[data-ok=true] { color: #6eeed6; }
+.scenza-password-rules li[data-ok=true] svg { opacity: 1; }
 .scenza-auth-dialog form { display: flex; flex-direction: column; gap: 0; margin-top: 8px; }
 .scenza-auth-dialog form > label { margin: 16px 0 8px; color: #d3e1e4; font-size: .9rem; }
 .scenza-auth-input { position: relative; }

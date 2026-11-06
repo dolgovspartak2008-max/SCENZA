@@ -7,12 +7,24 @@ export function rememberReferral() {
 export function savedReferral() {
   try { return localStorage.getItem(referralKey) || undefined; } catch { return undefined; }
 }
-export type AuthFieldErrors = Partial<Record<'email' | 'password' | 'name', 'invalidEmail' | 'shortPassword' | 'invalidName'>>;
-export function validateAuth(input: AuthInput & { requireName?: boolean }): AuthFieldErrors {
+export const requiredChannel = { name: '@SpartakWebDev', url: 'https://t.me/SpartakWebDev' };
+// Same rules as server/auth.mjs strongPassword(): required for new passwords only, so old accounts can still log in.
+const commonPasswords = /^(password|parol|qwerty|qwertz|asdf|zxcv|admin|welcome|letmein|iloveyou|scenza|abc|пароль|йцукен)[\d!@#$%^&*._-]*$/i;
+export function passwordChecks(password: string, email = '') {
+  const login = email.trim().toLowerCase().split('@')[0];
+  return {
+    length: password.length >= 8,
+    letters: /\p{Ll}/u.test(password) && /\p{Lu}/u.test(password),
+    digit: /\d/.test(password),
+    unique: new Set(password).size >= 5 && !commonPasswords.test(password) && !(login.length >= 4 && password.toLowerCase().includes(login)),
+  };
+}
+export type AuthFieldErrors = Partial<Record<'email' | 'password' | 'name', 'invalidEmail' | 'shortPassword' | 'weakPassword' | 'invalidName'>>;
+export function validateAuth(input: AuthInput & { requireName?: boolean; newPassword?: boolean }): AuthFieldErrors {
   return {
     ...(input.requireName && !(input.name ?? '').trim() ? { name: 'invalidName' as const } : {}),
     ...(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.email.trim()) ? { email: 'invalidEmail' as const } : {}),
-    ...(input.password.length < 8 ? { password: 'shortPassword' as const } : {}),
+    ...(input.password.length < 8 ? { password: 'shortPassword' as const } : input.newPassword && !Object.values(passwordChecks(input.password, input.email)).every(Boolean) ? { password: 'weakPassword' as const } : {}),
   };
 }
 export type AuthMode = 'login' | 'register' | 'reset';

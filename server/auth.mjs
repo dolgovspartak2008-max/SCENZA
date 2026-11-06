@@ -16,6 +16,12 @@ const digest = value => createHash('sha256').update(value).digest('hex');
 const equal = (left, right) => typeof left === 'string' && typeof right === 'string' && timingSafeEqual(Buffer.from(digest(left)), Buffer.from(digest(right)));
 const cookies = request => Object.fromEntries((request.headers.cookie || '').split(';').map(value => value.trim().split('=')).filter(([name, value]) => name && value));
 
+// Same rules as passwordChecks() in src/landing/auth.ts; only new passwords are checked so old accounts can still log in.
+const commonPasswords = /^(password|parol|qwerty|qwertz|asdf|zxcv|admin|welcome|letmein|iloveyou|scenza|abc|пароль|йцукен)[\d!@#$%^&*._-]*$/i;
+export function strongPassword(password, email = '') {
+  const login = email.split('@')[0];
+  return password.length >= 8 && /\p{Ll}/u.test(password) && /\p{Lu}/u.test(password) && /\d/.test(password) && new Set(password).size >= 5 && !commonPasswords.test(password) && !(login.length >= 4 && password.toLowerCase().includes(login));
+}
 async function passwordHash(password) {
   const salt = randomBytes(16).toString('hex');
   return { salt, hash: (await scrypt(password, salt, 64)).toString('hex') };
@@ -451,11 +457,11 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
   });
 
   async function requireMembership(id) {
-    if (!telegramId(id) || typeof telegramMembership !== 'function') throw fail('Не удалось проверить подписку на @MediaFlowTech. Повторите позже.', 503);
+    if (!telegramId(id) || typeof telegramMembership !== 'function') throw fail('Не удалось проверить подписку на @SpartakWebDev. Повторите позже.', 503);
     let member;
     try { member = await telegramMembership(String(id)); }
-    catch { throw fail('Не удалось проверить подписку на @MediaFlowTech. Повторите позже.', 503); }
-    if (member !== true) throw fail('Для регистрации подпишитесь на @MediaFlowTech и повторите проверку.', 403);
+    catch { throw fail('Не удалось проверить подписку на @SpartakWebDev. Повторите позже.', 503); }
+    if (member !== true) throw fail('Для регистрации подпишитесь на @SpartakWebDev и повторите проверку.', 403);
   }
 
   function browserChallenge(request) {
@@ -484,6 +490,7 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase() : '';
     if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw fail('Введите корректный email.');
     if (typeof body.password !== 'string' || body.password.length < 8 || body.password.length > 128) throw fail('Пароль должен содержать от 8 до 128 символов.');
+    if (body.mode !== 'login' && !strongPassword(body.password, email)) throw fail('Пароль слишком простой: нужны заглавные и строчные буквы, цифра, без «qwerty123», повторов и вашей почты.');
     const name = body.mode === 'register' ? (typeof body.name === 'string' ? body.name.trim().replace(/\s+/g, ' ').slice(0, 60) : '') : '';
     if (body.mode === 'register' && !name) throw fail('Введите имя пользователя.');
     rate(`email:${digest(email)}`, body.mode === 'login' ? 10 : 5);
@@ -647,7 +654,7 @@ export async function createAuth({ dataDir, telegramClientId = '', telegramBotUs
     cleanup();
     try {
       let result;
-      if (request.method === 'GET' && route === '/api/auth/config') result = { emailEnabled, emailCodeLength, telegramEnabled, telegramBotEnabled, telegramClientId: telegramEnabled ? clientId : '', legalReady, botRegistrationEnabled, legalVersion: VERSION, requiredTelegramChannel: 'https://t.me/MediaFlowTech' };
+      if (request.method === 'GET' && route === '/api/auth/config') result = { emailEnabled, emailCodeLength, telegramEnabled, telegramBotEnabled, telegramClientId: telegramEnabled ? clientId : '', legalReady, botRegistrationEnabled, legalVersion: VERSION, requiredTelegramChannel: 'https://t.me/SpartakWebDev' };
       else if (request.method === 'GET' && route === '/api/auth/session') result = { user: session(request), accessContact };
       else {
         if (request.method !== 'POST') throw fail('Метод не поддерживается.', 405);

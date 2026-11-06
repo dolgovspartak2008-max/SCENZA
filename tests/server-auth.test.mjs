@@ -7,7 +7,7 @@ import { generateKeyPairSync, sign } from 'node:crypto';
 import { createAuth } from '../server/auth.mjs';
 
 const consent = { termsAccepted: true, dataConsent: true };
-const password = 'correct horse battery';
+const password = 'Correct horse battery 9';
 
 test('Telegram bot login binds browser, requires approval and issues one session without a new trial', async t => {
   const f = await fixture(t, { telegramBotUsername: 'SCENZA_BOT', botRegistrationEnabled: true });
@@ -141,7 +141,7 @@ for (const durableStore of [false, true]) test(`sessions survive restart and rev
   await f.restart();
   assert.equal((await f.call('/session', undefined, { Cookie: loginCookie })).body.user, null);
   const beforeReset = await f.call('/email/start', { mode: 'login', email, password, remember: true });
-  const reset = await f.call('/email/start', { mode: 'reset', email, password: 'new persistent password', remember: true });
+  const reset = await f.call('/email/start', { mode: 'reset', email, password: 'New Durable 42', remember: true });
   assert.equal((await f.call('/email/verify', { challengeId: reset.body.challengeId, code: f.mail.at(-1).code })).status, 200);
   await f.restart();
   assert.equal((await f.call('/session', undefined, { Cookie: beforeReset.cookies[0].split(';')[0] })).body.user, null);
@@ -150,13 +150,13 @@ for (const durableStore of [false, true]) test(`sessions survive restart and rev
   await f.auth.bots.block(1, registration.body.user.id, false, 'unblock:persistent');
   await f.restart();
   assert.equal((await f.call('/session')).body.user.id, registration.body.user.id);
-  const temporary = await f.call('/email/start', { mode: 'login', email, password: 'new persistent password', remember: false });
+  const temporary = await f.call('/email/start', { mode: 'login', email, password: 'New Durable 42', remember: false });
   assert.equal(temporary.cookies[0].includes('Max-Age='), false);
   await f.restart();
   assert.equal((await f.call('/session')).body.user?.id, registration.body.user.id);
   f.advance(86400001);
   assert.equal((await f.call('/session')).body.user, null);
-  await f.call('/email/start', { mode: 'login', email, password: 'new persistent password', remember: true });
+  await f.call('/email/start', { mode: 'login', email, password: 'New Durable 42', remember: true });
   f.advance(30 * 86400000 + 1);
   await f.restart();
   assert.equal((await f.call('/session')).body.user, null);
@@ -255,14 +255,14 @@ test('registration requires separate consents and configured delivery; reset rev
   const registration = await f.call('/email/verify', { challengeId: start.body.challengeId, code: f.mail.at(-1).code });
   const oldCookie = registration.cookies[0].split(';')[0];
   const oldSession = (await f.call('/session')).body.user;
-  const reset = await f.call('/email/start', { mode: 'reset', email: 'a@example.com', password: 'a new secure password' });
+  const reset = await f.call('/email/start', { mode: 'reset', email: 'a@example.com', password: 'A new Secure 77' });
   const confirmed = await f.call('/email/verify', { challengeId: reset.body.challengeId, code: f.mail.at(-1).code });
   assert.equal(confirmed.status, 200);
   assert.equal(confirmed.body.user.id, oldSession.id);
   assert.equal(confirmed.body.user.trialStartedAt, oldSession.trialStartedAt);
   assert.equal((await f.call('/session', undefined, { Cookie: oldCookie })).body.user, null);
   assert.equal((await f.call('/email/start', { mode: 'login', email: 'a@example.com', password })).status, 401);
-  assert.equal((await f.call('/email/start', { mode: 'login', email: 'a@example.com', password: 'a new secure password' })).status, 200);
+  assert.equal((await f.call('/email/start', { mode: 'login', email: 'a@example.com', password: 'A new Secure 77' })).status, 200);
 });
 
 test('Telegram verifies signature, claims, browser nonce and one-use challenge before giving access', async t => {
@@ -368,10 +368,10 @@ test('secure mode sets Secure cookie and rejects oversized or non-JSON requests'
   assert.equal((await f.call('/email/start', { email: 'a'.repeat(25000) })).status, 413);
 });
 
-test('existing UI password contract accepts 8 characters and rejects fewer', async t => {
+test('new passwords must be at least 8 characters and not trivially weak', async t => {
   const f = await fixture(t);
-  assert.equal((await f.call('/email/start', { mode: 'register', name: 'Test User', email: 'short@example.com', password: '1234567', ...consent })).status, 400);
-  assert.equal((await f.call('/email/start', { mode: 'register', name: 'Test User', email: 'valid@example.com', password: '12345678', ...consent })).status, 200);
+  for (const password of ['Ab1defg', '12345678', 'qwertyuiop', 'Qwerty123', 'Password1', 'Aaaaaaa1', 'Valid12345']) assert.equal((await f.call('/email/start', { mode: 'register', name: 'Test User', email: 'valid@example.com', password, ...consent })).status, 400, password);
+  assert.equal((await f.call('/email/start', { mode: 'register', name: 'Test User', email: 'valid@example.com', password: 'Kazan-Clip7', ...consent })).status, 200);
 });
 
 test('external email ownership verification preserves password login and uses the durable account store', async t => {

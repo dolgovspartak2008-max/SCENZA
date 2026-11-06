@@ -197,7 +197,7 @@ test('password reset rejects an old-password login already queued behind its pen
     }
     return result;
   }
-  const email = 'race@example.com', oldPassword = 'old-password-123', newPassword = 'new-password-456';
+  const email = 'race@example.com', oldPassword = 'Old-Password-123', newPassword = 'New-Password-456';
   const start = await call('/email/start', { mode: 'register', name: 'Test User', email, password: oldPassword, ...accepted });
   assert.equal((await call('/email/verify', { challengeId: start.body.challengeId, code: mail.at(-1).code })).status, 200);
   const reset = await call('/email/start', { mode: 'reset', email, password: newPassword });
