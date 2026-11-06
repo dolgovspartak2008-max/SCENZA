@@ -30,6 +30,10 @@ export function capcutGuide({ settings, ad, subtitles, music }) {
 const fingerprint = value => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 // Empty-queue polling: 10 s, then 20 s, then every 30 s until a job appears. A found job is followed by the next claim at once.
 const idleDelays = [10000, 20000, 30000];
+// The lease lasts 10 minutes; a heartbeat failing for a few seconds must not abort the job. Give up only when the lease is
+// really lost or no heartbeat has succeeded for 8 minutes (2 minutes before another worker could take the job).
+const heartbeatGraceMs = 8 * 60000;
+const SHUTDOWN = 'SCENZA_WORKER_SHUTDOWN';
 export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || path.join(workspace,'.scena'), env = process.env, provider, python, sleep = delay } = {}) {
   const root=path.join(dataDir,'ai'), cache=path.join(root,'cache'); await fs.mkdir(cache,{recursive:true});
   let usageJob, usageWarning = false;
@@ -39,7 +43,12 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
   const ai=provider||new OpenRouterProvider({apiKey:env.OPENROUTER_API_KEY || '',model:env.PRIMARY_VIDEO_MODEL || PRIMARY_VIDEO_MODEL,editModel:env.FAST_EDIT_MODEL || FAST_EDIT_MODEL,onUsage:recordUsage,onUsageError:usageError});
   const workerId=randomUUID(),tokens=createTokens(store);
   python ||= env.SCENZA_PYTHON || path.join(workspace,'.scena','venv',process.platform==='win32'?'Scripts/python.exe':'bin/python');
-  let stopping=false;
+  let stopping=false,active=null;
+  const releaseActive=async()=>{
+    const job=active?.job;if(!job||active.released)return;active.released=true;
+    try{const released=await store.releaseJob(job.id,workerId);console.log(released?`SCENZA: задача ${job.id} возвращена в очередь без лишней попытки.`:`SCENZA: задача ${job.id} уже не принадлежит этому обработчику.`);}
+    catch(error){console.warn(`SCENZA: не удалось вернуть задачу ${job.id} в очередь (${error.network?.kind||error.code||'error'}); её заберут после истечения аренды.`);}
+  };
   async function processJob(job) {
     usageJob = job;
     const project=await store.getProject(job.ownerId,job.projectId);
@@ -48,11 +57,15 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
     const folder=path.resolve(cache,`${job.id}-${workerId}`);
     if (!/^[a-f0-9-]{36}$/i.test(job.id) || !folder.startsWith(path.resolve(cache)+path.sep)) throw fail('Некорректная задача.',400);
     await fs.mkdir(folder,{recursive:true});
-    let currentStage='Подготовка',progress=null,leaseError;
+    let currentStage='Подготовка',progress=null,leaseError,lastBeat=Date.now();
     const operation=new AbortController();
+    active={job,operation,released:false};
     const processVideo=(args,options={})=>ff(args,{...options,signal:operation.signal});
-    const heartbeat=()=>store.heartbeat(job.id,workerId,{stage:currentStage,progress});
-    const timer=setInterval(()=>void heartbeat().catch(error=>{leaseError=error;operation.abort();}),10000);
+    const heartbeat=async()=>{await store.heartbeat(job.id,workerId,{stage:currentStage,progress});lastBeat=Date.now();};
+    const timer=setInterval(()=>void heartbeat().catch(error=>{
+      if(error.message!=='Job lease lost'&&Date.now()-lastBeat<heartbeatGraceMs)return;
+      leaseError=error;operation.abort();
+    }),10000);
     const save=async()=>{if(leaseError)throw leaseError;await heartbeat();await store.saveProject(job.ownerId,project);};
     // `phase` names a measured step: its start is shown to the client, its duration feeds future time estimates.
     const phaseStarted={};
@@ -266,6 +279,8 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
         await store.enqueue(job.ownerId,project.id,'analyze');
       }
     } catch(error) {
+      // Stopped by a deploy: the job goes back to the queue as it is, never to FAILED.
+      if(operation.signal.reason===SHUTDOWN){await releaseActive();return;}
       if(!leaseError){
         const previousVersion=job.type==='revise'&&project.versions?.some(version=>version.id===project.currentVersion);
         const restore=(job.payload?.capcut||job.type==='asset')&&job.payload.previousStatus&&!busyStates.includes(job.payload.previousStatus);
@@ -274,10 +289,14 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
         if(previousVersion)project.error+=' Предыдущая версия ролика сохранена. Можно подтвердить её или отправить другую правку.';
         await save().catch(()=>{});await store.finishJob(job.id,workerId,{error:project.error}).catch(()=>{});
       }
-    } finally {clearInterval(timer);await fs.rm(folder,{recursive:true,force:true});}
+    } finally {clearInterval(timer);active=null;await fs.rm(folder,{recursive:true,force:true});}
   }
   return {
-    async once(){const job=await store.claimJob(workerId);if(!job)return false;await processJob(job);return true;},
+    async once(){
+      const job=await store.claimJob(workerId);if(!job)return false;
+      if(stopping){active={job,released:false};await releaseActive();active=null;return true;}
+      await processJob(job);return true;
+    },
     async start(){
       let unavailable=false,idle=0;
       try {
@@ -289,18 +308,40 @@ export async function createWorker({ dataDir = process.env.SCENA_DATA_DIR || pat
             else if(!stopping)await sleep(idleDelays[Math.min(idle++,idleDelays.length-1)]);
           } catch(error) {
             if(![408,429,502,503,504].includes(error.status))throw error;
-            if(!unavailable)console.warn('SCENZA: очередь временно недоступна. Повторяем подключение.');
+            if(!unavailable)console.warn(`SCENZA: очередь временно недоступна (${error.network?`${error.network.kind}, ${error.network.code}`:`HTTP ${error.status}`}). Повторяем подключение.`);
             unavailable=true;if(!stopping)await sleep(5000);
           }
         }
       }finally{await store.close();}
     },
     stop(){stopping=true;},
+    get busy(){return !!active;},
+    // Drain deadline reached: stop FFmpeg/Python/AI calls of the current job; processJob then hands the job back.
+    interrupt(){if(active?.operation&&!active.operation.signal.aborted)active.operation.abort(SHUTDOWN);},
+    // Last resort when the job does not react to the abort (hung native call): release the lease before exiting.
+    release:releaseActive,
     close:()=>store.close(),
   };
 }
+// Bounded drain after SIGTERM. Must stay below TimeoutStopSec in deploy/scenza-worker.service (1320 s):
+// drain (default 1200 s) + abort grace (30 s) + release with retries (< 60 s).
+export function gracefulStop(worker,{drainMs=1200000,graceMs=30000,exit=code=>process.exit(code),log=console.log}={}){
+  let started=false;
+  return ()=>{
+    if(started)return;started=true;worker.stop();
+    if(!worker.busy){log('SCENZA: остановка — активной задачи нет.');return;}
+    log(`SCENZA: остановка — новые задания не берём, ждём текущее до ${Math.round(drainMs/60000)} мин.`);
+    setTimeout(()=>{
+      if(!worker.busy)return;
+      log('SCENZA: время ожидания вышло — прерываем задачу и возвращаем её в очередь.');worker.interrupt();
+      setTimeout(async()=>{if(!worker.busy)return;log('SCENZA: задача не ответила на прерывание — освобождаем аренду и завершаем процесс.');await worker.release();exit(0);},graceMs).unref();
+    },drainMs).unref();
+  };
+}
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
-  const worker=await createWorker();process.once('SIGINT',()=>worker.stop());process.once('SIGTERM',()=>worker.stop());
+  const worker=await createWorker(),drainSeconds=Number(process.env.SCENZA_WORKER_DRAIN_SECONDS);
+  const stop=gracefulStop(worker,{drainMs:(Number.isFinite(drainSeconds)&&drainSeconds>=0&&drainSeconds<=1200?drainSeconds:1200)*1000});
+  process.once('SIGINT',stop);process.once('SIGTERM',stop);
   console.log('SCENZA: обработчик видео запущен.');
   await checkMediaTools().then(()=>console.log('SCENZA: FFmpeg и FFprobe запускаются.'),error=>console.error(`SCENZA: ${error.message}`));
   await worker.start();

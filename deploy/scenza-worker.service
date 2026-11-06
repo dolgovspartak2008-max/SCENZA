@@ -20,8 +20,12 @@ RuntimeDirectoryMode=0750
 ExecStart=/usr/bin/flock --no-fork --nonblock /run/scenza-worker/instance.lock /usr/local/bin/node server/ai/worker.mjs
 Restart=on-failure
 RestartSec=5
+# SIGTERM goes to Node only; Python/FFmpeg keep working while the current job drains.
+# Node waits up to 20 min (SCENZA_WORKER_DRAIN_SECONDS, max 1200), then aborts the job, returns it to the queue
+# without counting the try and exits (worker.mjs gracefulStop). 1320 s = 1200 drain + 30 abort grace + 60 release + margin;
+# SIGKILL is only a last resort if the Node event loop itself is frozen.
 KillMode=mixed
-TimeoutStopSec=180
+TimeoutStopSec=1320
 UMask=0077
 NoNewPrivileges=true
 PrivateTmp=true

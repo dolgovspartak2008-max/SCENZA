@@ -2,6 +2,7 @@ import { DatabaseSync } from 'node:sqlite';
 import { mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { fetchWithRetry, NETWORK_LABELS } from '../net.mjs';
 
 const leaseMs = 10 * 60 * 1000;
 const jobTypes = new Set(['preprocess', 'analyze', 'preview', 'revise', 'export', 'asset']);
@@ -71,8 +72,8 @@ function monthlyUsage(rows, month) {
   return result;
 }
 
-export async function createStore({ dataDir, env = process.env }) {
-  if (env.SUPABASE_URL || env.SUPABASE_SECRET_KEY) return supabaseStore(env);
+export async function createStore({ dataDir, env = process.env, net = {} }) {
+  if (env.SUPABASE_URL || env.SUPABASE_SECRET_KEY) return supabaseStore(env, net);
   await mkdir(dataDir, { recursive: true });
   const db = new DatabaseSync(path.join(dataDir, 'video-jobs.sqlite'));
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA busy_timeout=10000;
@@ -198,6 +199,10 @@ export async function createStore({ dataDir, env = process.env }) {
     async finishJob(jobId, workerId, { error, result } = {}) {
       return leaseUpdate(jobId, workerId, 'UPDATE jobs SET status=?,stage=?,progress=?,error=?,result=?,worker_id=NULL,lease_until=NULL,updated_at=?', [error ? 'error' : 'done', error ? 'error' : 'done', error ? null : 100, error ? String(error).slice(0, 1000) : null, result == null ? null : JSON.stringify(result), new Date().toISOString()]);
     },
+    // A worker stopped by a deploy hands its job back at once: no 10-minute lease wait and the interrupted try is not counted.
+    async releaseJob(jobId, workerId) {
+      return toJob(db.prepare("UPDATE jobs SET status='queued',stage='queued',progress=NULL,worker_id=NULL,lease_until=NULL,attempts=MAX(attempts-1,0),updated_at=? WHERE id=? AND worker_id=? AND status='running' AND lease_until>? RETURNING *").get(new Date().toISOString(), identity(jobId), identity(workerId), Date.now()));
+    },
     async retryJob(ownerId, id) {
       return transaction(() => {
         const failed = db.prepare("SELECT project_id FROM jobs WHERE owner_id=? AND id=? AND status='error'").get(identity(ownerId), identity(id));
@@ -210,19 +215,25 @@ export async function createStore({ dataDir, env = process.env }) {
   };
 }
 
-function supabaseStore(env) {
+// Reads and idempotent RPCs (claim returns the job already owned, heartbeat/save/usage/release are keyed) are retried; enqueue/finish/admin are not.
+const retriedRpc = new Set(['claim', 'heartbeat', 'save_project', 'record_usage', 'release']);
+function supabaseStore(env, net) {
   let base;
   try { base = new URL(env.SUPABASE_URL); } catch { throw new Error('Invalid Supabase configuration'); }
   if (base.protocol !== 'https:' || base.username || base.password || base.pathname !== '/' || base.search || base.hash || !env.SUPABASE_SECRET_KEY) throw new Error('Invalid Supabase configuration');
   const request = async (endpoint, body) => {
     let response;
+    const rpc = endpoint.startsWith('rpc/scenza_video_') ? endpoint.slice(17) : null;
     try {
-      response = await fetch(new URL(`/rest/v1/${endpoint}`, base), {
+      response = await fetchWithRetry(net.fetch || fetch, new URL(`/rest/v1/${endpoint}`, base), {
         method: body === undefined ? 'GET' : 'POST', redirect: 'error',
         headers: { apikey: env.SUPABASE_SECRET_KEY, ...(env.SUPABASE_SECRET_KEY.startsWith('eyJ') ? { Authorization: `Bearer ${env.SUPABASE_SECRET_KEY}` } : {}), 'Content-Type': 'application/json' },
-        body: body === undefined ? undefined : JSON.stringify(body), signal: AbortSignal.timeout(30000),
-      });
-    } catch { throw Object.assign(new Error('Video database is unavailable'), { status: 503, code: 'VIDEO_DATABASE_UNAVAILABLE' }); }
+        body: body === undefined ? undefined : JSON.stringify(body),
+      }, { timeoutMs: 20000, ...net, retry: body === undefined || retriedRpc.has(rpc) });
+    } catch (error) {
+      const network = error.network || { kind: 'network', code: 'unknown', attempts: 1 };
+      throw Object.assign(new Error(`Video database is unavailable: ${NETWORK_LABELS[network.kind]}`), { status: 503, code: 'VIDEO_DATABASE_UNAVAILABLE', network });
+    }
     if (response.status === 409) throw busyProject();
     if (!response.ok) {
       const body = await response.json().catch(() => null);
@@ -290,6 +301,7 @@ function supabaseStore(env) {
     async claimJob(workerId) { return rpcJob('claim', { p_worker: identity(workerId) }); },
     async heartbeat(jobId, workerId, { stage, progress } = {}) { return checkedJob('heartbeat', { p_id: identity(jobId), p_worker: identity(workerId), p_stage: stage == null ? null : String(stage).slice(0, 120), p_progress: progressValue(progress) }, 'Job lease lost'); },
     async finishJob(jobId, workerId, { error, result } = {}) { return checkedJob('finish', { p_id: identity(jobId), p_worker: identity(workerId), p_error: error ? String(error).slice(0, 1000) : null, p_result: result ?? null }, 'Job lease lost'); },
+    async releaseJob(jobId, workerId) { return rpcJob('release', { p_id: identity(jobId), p_worker: identity(workerId) }); },
     async retryJob(ownerId, id) { return checkedJob('retry', { p_owner: identity(ownerId), p_id: identity(id) }, 'Failed job not found'); },
     async close() {},
   };

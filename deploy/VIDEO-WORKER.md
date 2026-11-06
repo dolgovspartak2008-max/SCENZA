@@ -134,3 +134,16 @@ node --test tests/media-pipeline.test.mjs tests/gemini.test.mjs tests/ai-storage
 | `tests/ai-browser.mjs`, `tests/ai-review-browser.mjs` | Мобильная/десктопная проверка. Первый тест работает с отдельной тестовой библиотекой, второй подменяет только ответы внутри браузерного контекста. |
 
 Новых npm-зависимостей для этого функционала нет. На сервере установлены Python-зависимости и шрифты для кириллицы, применён SQL, настроен отдельный env и запущены оба сервиса. Релиз опубликован напрямую на существующий сервер; Git commit и push не выполнялись.
+
+## Деплой без прерывания обработки
+
+После переключения `/srv/scenza/current` на новый релиз вместо `systemctl restart scenza scenza-worker` запускайте от root:
+
+```
+node /srv/scenza/current/scripts/deploy-restart.mjs --previous /srv/scenza/releases/СТАРЫЙ --next /srv/scenza/releases/НОВЫЙ
+```
+
+Скрипт сравнивает файлы релизов. `scenza` перезапускается при любом изменении. `scenza-worker` перезапускается только при изменении `server/ai/**`, модулей, которые worker импортирует (например `server/net.mjs`), его unit-файла, `package.json`/lock или переменных AI/БД в env-файлах (хранится только хеш, в `/srv/scenza/shared/worker-env.sha256`). Перезапуск worker идёт с `--no-block`: деплой не ждёт, старый worker доделывает текущую задачу (до 20 минут), затем systemd запускает новый. Изменённые unit-файлы скрипт сам копирует в `/etc/systemd/system` и делает `daemon-reload`. Флаг `--dry-run` только показывает план. Старый релиз не удаляйте, пока старый worker не завершился: он работает из своей папки.
+
+Для мгновенного возврата задачи в очередь при остановке примените в Supabase функцию `scenza_video_release` из `server/ai/migration.sql`. Без неё прерванная задача, как раньше, ждёт истечения 10-минутной аренды.
+

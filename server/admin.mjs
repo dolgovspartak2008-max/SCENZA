@@ -2,6 +2,7 @@ import { promises as fs, constants } from 'node:fs';
 import path from 'node:path';
 import { randomUUID, createHash } from 'node:crypto';
 import { diagnose, jobAlertText } from './diagnosis.mjs';
+import { fetchWithRetry, NETWORK_LABELS } from './net.mjs';
 import { PUBLICATION_BONUS, publicationUrl } from './ai/tokens.mjs';
 
 const DAY = 86400000;
@@ -14,7 +15,7 @@ const page = (items, { offset = 0, limit = 10 } = {}) => ({ total: items.length,
 const sumKnown = (rows, key) => rows.length && rows.every(row => Number.isFinite(row[key])) ? rows.reduce((sum, row) => sum + row[key], 0) : null;
 const fingerprint = value => createHash('sha256').update(value).digest('hex');
 
-export async function createAdminService({ auth, dataDir, getVideoApi, now = Date.now, env = process.env, fetch: fetcher = globalThis.fetch }) {
+export async function createAdminService({ auth, dataDir, getVideoApi, now = Date.now, env = process.env, fetch: fetcher = globalThis.fetch, net = {} }) {
   await fs.mkdir(dataDir, { recursive: true });
   const file = path.join(dataDir, 'admin.json');
   let state = { maintenance: { enabled: false, message: 'В SCENZA идут технические работы. Новые обработки временно недоступны. Попробуйте позже.' }, tickets: [], publications: [], broadcasts: [], alerts: {}, events: [] };
@@ -53,7 +54,8 @@ export async function createAdminService({ auth, dataDir, getVideoApi, now = Dat
   // The alert names the actual failure so the owner knows whether to wake the database, apply the migration or fix the key.
   const databaseReason = error => {
     const code = error?.code || '';
-    if (code === 'VIDEO_DATABASE_UNAVAILABLE') return 'нет связи с Supabase. Проверьте, не приостановлен ли проект в панели Supabase (бесплатные проекты засыпают без активности), и доступ сервера в интернет.';
+    if (code === 'VIDEO_DATABASE_UNAVAILABLE') return `сервер не получил ответа от Supabase после ${error.network?.attempts || 1} попыток: ${NETWORK_LABELS[error.network?.kind] || NETWORK_LABELS.network}${error.network?.code && error.network.code !== 'unknown' ? ` (${error.network.code})` : ''}. ${{ dns: 'Проверьте DNS сервера и адрес SUPABASE_URL.', tls: 'Проверьте системное время и сертификаты сервера.', timeout: 'Проверьте сеть сервера и статус Supabase.', reset: 'Проверьте сеть сервера и статус Supabase.', refused: 'Проверьте сеть/файрвол сервера.' }[error.network?.kind] || 'Проверьте сеть сервера и статус проекта Supabase.'}`;
+    if (code === 'VIDEO_HTTP_429') return 'Supabase ограничил частоту запросов (HTTP 429). Проверьте нагрузку и лимиты тарифа.';
     if (code === 'VIDEO_TABLE_MISSING') return 'в Supabase нет таблиц видеозадач. Примените server/ai/migration.sql в SQL Editor.';
     if (/^VIDEO_HTTP_(401|403)$/.test(code)) return 'Supabase отклонил ключ (HTTP 401/403). Проверьте SUPABASE_SECRET_KEY на сервере.';
     if (/^VIDEO_HTTP_5\d\d$/.test(code)) return `Supabase вернул ошибку сервера (${code.slice(11)}). Проверьте статус проекта в панели Supabase.`;
@@ -71,14 +73,22 @@ export async function createAdminService({ auth, dataDir, getVideoApi, now = Dat
       const value = { keyRemaining: null, keyLimit: null, keyStatus: key ? 'unknown' : 'not_configured', keyCheckedAt: timestamp() };
       if (key) {
         try {
-          const response = await fetcher('https://openrouter.ai/api/v1/key', { headers: { Authorization: `Bearer ${key}` }, redirect: 'error', signal: AbortSignal.timeout(5000) });
-          if (!response.ok) value.keyStatus = response.status === 402 ? 'payment_required' : [401, 403].includes(response.status) ? 'disabled' : 'unavailable';
+          // 3 tries × 10 s with 2 s / 5 s pauses: a few seconds of network trouble is not reported as an API outage.
+          const response = await fetchWithRetry(fetcher, 'https://openrouter.ai/api/v1/key', { headers: { Authorization: `Bearer ${key}` }, redirect: 'error' }, { timeoutMs: 10000, ...net });
+          if (!response.ok) {
+            value.keyStatus = response.status === 402 ? 'payment_required' : [401, 403].includes(response.status) ? 'disabled' : response.status === 429 ? 'rate_limited' : response.status >= 500 ? 'provider_error' : 'unavailable';
+            value.keyHttpStatus = response.status;
+            console.warn(`SCENZA: проверка ключа OpenRouter — HTTP ${response.status}.`);
+          }
           else {
             const { data } = await response.json();
             if (data?.limit === null && data?.limit_remaining === null) value.keyStatus = 'unlimited';
             else if (Number.isFinite(data?.limit) && data.limit >= 0 && Number.isFinite(data?.limit_remaining)) Object.assign(value, { keyLimit: data.limit, keyRemaining: data.limit_remaining, keyStatus: 'limited' });
           }
-        } catch { value.keyStatus = 'unavailable'; }
+        } catch (error) {
+          value.keyStatus = 'unavailable'; value.keyNetwork = error.network ? { kind: error.network.kind, code: error.network.code, attempts: error.network.attempts } : { kind: 'network', code: 'unknown', attempts: 1 };
+          console.warn(`SCENZA: проверка ключа OpenRouter недоступна — ${value.keyNetwork.kind} (${value.keyNetwork.code}), попыток: ${value.keyNetwork.attempts}.`);
+        }
       }
       keyCache = { until: now() + 5 * 60000, value };
       return value;
@@ -213,7 +223,9 @@ export async function createAdminService({ auth, dataDir, getVideoApi, now = Dat
       if (key.keyStatus === 'limited' && key.keyRemaining <= key.keyLimit * 0.1) alerts.push({ key: 'ai:key:low', text: `SCENZA: осталось ${key.keyRemaining} USD из лимита текущего API-ключа ${key.keyLimit} USD. Это лимит ключа, а не общий баланс аккаунта OpenRouter. Проверьте лимиты и баланс в кабинете API.` });
       else if (key.keyStatus === 'payment_required') alerts.push({ key: 'ai:key:payment_required', text: 'SCENZA: OpenRouter вернул HTTP 402 при проверке ключа. Проверьте средства и лимиты в кабинете API.' });
       else if (key.keyStatus === 'disabled') alerts.push({ key: 'ai:key:disabled', text: 'SCENZA: OpenRouter отклонил доступ к текущему API-ключу (HTTP 401/403). Проверьте активность ключа и ограничения доступа.' });
-      else if (key.keyStatus === 'unavailable') alerts.push({ key: 'ai:key:unavailable', text: 'SCENZA: проверка лимита OpenRouter API недоступна. Проверьте состояние API и соединение сервера.' });
+      else if (key.keyStatus === 'rate_limited') alerts.push({ key: 'ai:key:rate_limited', text: 'SCENZA: OpenRouter ограничил частоту запросов (HTTP 429) при проверке ключа. Если повторяется — проверьте лимиты ключа.' });
+      else if (key.keyStatus === 'provider_error') alerts.push({ key: `ai:key:http:${key.keyHttpStatus}`, text: `SCENZA: OpenRouter ответил ошибкой сервера (HTTP ${key.keyHttpStatus}) три раза подряд. Это сбой на стороне OpenRouter; проверьте status.openrouter.ai.` });
+      else if (key.keyStatus === 'unavailable') alerts.push({ key: `ai:key:unavailable:${key.keyNetwork?.kind || 'network'}`, text: `SCENZA: сервер не достучался до OpenRouter после ${key.keyNetwork?.attempts || 1} попыток: ${NETWORK_LABELS[key.keyNetwork?.kind] || NETWORK_LABELS.network}${key.keyNetwork?.code && key.keyNetwork.code !== 'unknown' ? ` (${key.keyNetwork.code})` : ''}. Проверьте сеть сервера.` });
       try {
         const data = await videoAlerts(new Date(now() - 15 * 60000).toISOString());
         for (const job of data.jobs) {
@@ -222,7 +234,10 @@ export async function createAdminService({ auth, dataDir, getVideoApi, now = Dat
         }
         const recent = data.usage.filter(row => row.error && Date.parse(row.createdAt) > now() - 15 * 60000);
         for (const code of new Set(recent.map(row => row.error))) if (/NETWORK|PROVIDER|RATE_LIMIT|UNKNOWN|PAYMENT_REQUIRED/.test(code)) alerts.push({ key: `ai:${code}`, text: `SCENZA: сбой AI API (${code}). Проверьте раздел AI / расходы и баланс в кабинете API.` });
-      } catch (error) { alerts.push({ key: `database:unavailable:${error?.code || 'unknown'}`, text: `SCENZA: база видеозадач недоступна.\nПричина: ${databaseReason(error)}` }); }
+      } catch (error) {
+        console.warn(`SCENZA: база видеозадач недоступна — ${error?.network ? `${error.network.kind} (${error.network.code}), попыток: ${error.network.attempts}` : error?.code || 'unknown'}.`);
+        alerts.push({ key: `database:unavailable:${error?.code || 'unknown'}:${error?.network?.kind || ''}`, text: `SCENZA: база видеозадач недоступна.\nПричина: ${databaseReason(error)}` });
+      }
       return alerts;
     },
     async journal(actor, { userId, limit = 20, errorsOnly = false } = {}) {

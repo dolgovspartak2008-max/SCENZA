@@ -154,3 +154,11 @@ revoke all on function public.scenza_video_record_usage(text,jsonb) from public,
 revoke all on function public.scenza_video_admin_job(text,text) from public,anon,authenticated;
 grant execute on function public.scenza_video_record_usage(text,jsonb) to service_role;
 grant execute on function public.scenza_video_admin_job(text,text) to service_role;
+-- Graceful worker stop: hand the running job back to the queue at once and do not count the interrupted try.
+create or replace function public.scenza_video_release(p_id text,p_worker text)
+returns setof public.scenza_video_jobs language sql set search_path = public as $$
+  update scenza_video_jobs set status='queued',stage='queued',progress=null,worker_id=null,lease_until=null,attempts=greatest(attempts-1,0),updated_at=now()
+  where id=p_id and worker_id=p_worker and status='running' and lease_until>now() returning *;
+$$;
+revoke all on function public.scenza_video_release(text,text) from public,anon,authenticated;
+grant execute on function public.scenza_video_release(text,text) to service_role;
